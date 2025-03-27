@@ -1,10 +1,14 @@
 import random
 import typing as T
 
+import numpy.typing as np_typing
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data.dataloader import DataLoader
+
+from base_agent import BaseAgent
 
 
 class ConvNetBackbone(nn.Module):
@@ -119,7 +123,7 @@ class Q(nn.Module):
         return self.reward_predictor(torch.cat([x_state, x_action], dim=-1))
 
 
-class BasicQAgent:
+class BasicQAgent(BaseAgent):
 
     def __init__(
         self, num_actions: int, q_params: T.Mapping[str, T.Any], lr: float = 1e-4
@@ -135,6 +139,7 @@ class BasicQAgent:
         self.q.train()
 
     def learn(self, train_data: DataLoader) -> None:
+        self.train()
         for batch in train_data:
             state, action, actual_reward = batch
             predicted_reward = self.q(state, action).flatten()
@@ -143,15 +148,9 @@ class BasicQAgent:
             loss.backward()
             self.optim.step()
 
-    def act(self, state: torch.Tensor, ep: float = 0.0) -> int:
+    def act(self, state: np_typing.NDArray, ep: float = 0.0) -> int:
+        s = torch.Tensor(state.copy())[None, :]
+        as_ = [torch.Tensor([a])[None, :].int() for a in range(self.num_actions)]
         if random.random() < 1 - ep:
-            max_reward = -torch.inf
-            action = None
-            for a in range(self.num_actions):
-                action_tensor = torch.Tensor([a])[None, :].int()
-                reward = self.q(state, action_tensor)
-                if reward > max_reward:
-                    action = a
-                    max_reward = reward
-            return action
+            return int(np.argmax([self.q(s, a).item() for a in as_]))
         return random.choice(range(self.num_actions))

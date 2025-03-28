@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data.dataloader import DataLoader
+import tqdm
 
 from base_agent import BaseAgent
 
@@ -44,8 +45,8 @@ class ConvNetBackbone(nn.Module):
             height = (height - 3 + 1) // 2
             width = (width - 3 + 1) // 2
 
-        self.batch_norms = batch_norms
-        self.conv_layers = conv_layers
+        self.batch_norms = nn.ModuleList(batch_norms)
+        self.conv_layers = nn.ModuleList(conv_layers)
 
         # Calculate the flattened tensor size
         flattened_size = conv_layer_channels[-1] * height * width
@@ -116,6 +117,11 @@ class Q(nn.Module):
             backbone_output_dim + action_emb_dim,
             reward_predictor_hidden_layer_dims,
         )
+        self.device = torch.device(
+            "mps" if torch.backends.mps.is_available() else "cpu"
+        )
+
+        self.to(self.device)
 
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         x_state = self.state_backbone(state)
@@ -131,6 +137,9 @@ class BasicQAgent(BaseAgent):
         self.q = Q(**q_params)
         self.optim = torch.optim.AdamW(self.q.parameters(), lr=lr)
         self.num_actions = num_actions
+        self.device = torch.device(
+            "mps" if torch.backends.mps.is_available() else "cpu"
+        )
 
     def eval(self):
         self.q.eval()
@@ -140,17 +149,26 @@ class BasicQAgent(BaseAgent):
 
     def learn(self, train_data: DataLoader) -> None:
         self.train()
-        for batch in train_data:
+        for batch in tqdm.tqdm(train_data, total=len(train_data), desc="Training"):
+
             state, action, actual_reward = batch
+            state = state.to(self.device)
+            action = action.to(self.device)
+            actual_reward = actual_reward.to(self.device)
+
             predicted_reward = self.q(state, action).flatten()
             loss = F.mse_loss(predicted_reward, actual_reward)
+
             self.optim.zero_grad()
             loss.backward()
             self.optim.step()
 
     def act(self, state: np_typing.NDArray, ep: float = 0.0) -> int:
-        s = torch.Tensor(state.copy())[None, :]
-        as_ = [torch.Tensor([a])[None, :].int() for a in range(self.num_actions)]
+        s = torch.Tensor(state.copy())[None, :].to(self.device)
+        as_ = [
+            torch.Tensor([a])[None, :].int().to(self.device)
+            for a in range(self.num_actions)
+        ]
         if random.random() < 1 - ep:
             return int(np.argmax([self.q(s, a).item() for a in as_]))
         return random.choice(range(self.num_actions))

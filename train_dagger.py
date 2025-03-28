@@ -1,5 +1,4 @@
 import tqdm
-import numpy as np
 from nes_py.wrappers import JoypadSpace
 from gym import Env
 import gym_super_mario_bros
@@ -27,7 +26,7 @@ def train_dagger(
     state_buffer, action_buffer, reward_buffer = [], [], []
     mean_eval_rewards = []
     eval_steps = []
-    for step in tqdm.tqdm(range(num_train_steps), desc="Training"):
+    for step in tqdm.tqdm(range(num_train_steps), desc="Gathering"):
         agent.eval()
         if done:
             state = env.reset()
@@ -65,7 +64,6 @@ def train_dagger(
 if __name__ == "__main__":
     env = gym_super_mario_bros.make("SuperMarioBros-v0")
     env = JoypadSpace(env, SIMPLE_MOVEMENT)
-
     agent = BasicQAgent(
         num_actions=env.action_space.n,
         q_params=dict(
@@ -76,16 +74,18 @@ if __name__ == "__main__":
             action_emb_dim=32,
             reward_predictor_hidden_layer_dims=[128, 64, 32],
         ),
+        lr=5e-5,
     )
-
     results = train_dagger(
         agent,
         env,
-        num_train_steps=1000,
-        train_set_size=50,
-        train_batch_size=16,
-        train_every=100,
-        eval_every=200,
-        num_eval_steps=100,
+        num_train_steps=100_000,
+        train_set_size=10_000,
+        train_batch_size=256,
+        train_every=2_500,
+        eval_every=2_500,
+        num_eval_steps=10_000,
+        render=True,
+        ep=0.05,
     )
     print(results)

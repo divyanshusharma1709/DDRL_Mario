@@ -1,8 +1,6 @@
 from gym import Env
 import numpy as np
-import numpy.typing as np_typing
 import tqdm
-import torch
 
 from base_agent import BaseAgent
 
@@ -13,12 +11,16 @@ def eval_agent(
     num_steps: int,
 ) -> float:
     agent.eval()
-    total_reward = 0.0
+    total_reward, max_reward = 0.0, -np.inf
     done = True
-    for _ in tqdm.tqdm(range(num_steps), desc="Eval"):
+    progress_bar = tqdm.tqdm(range(num_steps), desc="Eval")
+    for _ in progress_bar:
         if done:
+            max_reward = max(max_reward, total_reward)
+            total_reward = 0.0
             state = env.reset()
         action = agent.act(state, ep=0.00)
         state, reward, done, _ = env.step(action)
         total_reward += reward
-    return total_reward / num_steps
+        progress_bar.set_postfix(max_reward=f"{max_reward:.4f}")
+    return max_reward

@@ -1,11 +1,6 @@
 import tqdm
-from nes_py.wrappers import JoypadSpace
 from gym import Env
-import gym_super_mario_bros
-from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
-
 from base_agent import BaseAgent
-from baseline_q_agent import BasicQAgent
 from eval_utils import eval_agent
 
 
@@ -22,19 +17,21 @@ def train_dagger(
     render: bool = False,
 ):
     done = True
-    total_reward = 0.0
     state_buffer, action_buffer, reward_buffer = [], [], []
     mean_eval_rewards = []
     eval_steps = []
-    for step in tqdm.tqdm(range(num_train_steps), desc="Gathering"):
+    episode_reward = 0.0
+    pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
+    for step in pbar:
         agent.eval()
         if done:
+            episode_reward = 0.0
             state = env.reset()
 
         action = agent.act(state, ep=ep)
         next_state, reward, done, _ = env.step(action)
 
-        total_reward += reward
+        episode_reward += reward
 
         if step > 0 and step % train_every == 0:
             agent.update(
@@ -55,37 +52,9 @@ def train_dagger(
 
         state = next_state
 
+        pbar.set_postfix(ep_reward=episode_reward)
+
         if render:
             env.render()
 
     return {"mean_eval_rewards": mean_eval_rewards, "eval_steps": eval_steps}
-
-
-if __name__ == "__main__":
-    env = gym_super_mario_bros.make("SuperMarioBros-v0")
-    env = JoypadSpace(env, SIMPLE_MOVEMENT)
-    agent = BasicQAgent(
-        num_actions=env.action_space.n,
-        q_params=dict(
-            backbone_input_shape=(240, 256, 3),
-            backbone_conv_channels=[64, 128, 256, 512, 1024, 2048],
-            backbone_output_dim=256,
-            action_emb_table_size=env.action_space.n,
-            action_emb_dim=32,
-            reward_predictor_hidden_layer_dims=[128, 64, 32],
-        ),
-        lr=5e-5,
-    )
-    results = train_dagger(
-        agent,
-        env,
-        num_train_steps=100_000,
-        train_set_size=10_000,
-        train_batch_size=256,
-        train_every=2_500,
-        eval_every=2_500,
-        num_eval_steps=10_000,
-        render=True,
-        ep=0.05,
-    )
-    print(results)

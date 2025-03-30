@@ -1,6 +1,6 @@
 import tqdm
 from gym import Env
-from base_agent import BaseAgent
+from agent.base_agent import BaseAgent
 from eval_utils import eval_agent
 
 

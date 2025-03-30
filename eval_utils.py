@@ -2,7 +2,7 @@ from gym import Env
 import numpy as np
 import tqdm
 
-from base_agent import BaseAgent
+from agent.base_agent import BaseAgent
 
 
 def eval_agent(

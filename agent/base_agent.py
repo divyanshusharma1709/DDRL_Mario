@@ -26,19 +26,30 @@ class BaseAgent(abc.ABC):
         all_states: T.List[np_typing.NDArray],
         all_actions: T.List[int],
         all_rewards: T.List[float],
+        all_next_states: T.List[np_typing.NDArray],
         num_train_examples: int,
         train_batch_size: int,
     ):
-        states = np.vstack([state[np.newaxis, :] for state in all_states])
-        states_t = torch.Tensor(states)
+        stacked_states = np.vstack(
+            [state[np.newaxis, :] for state in all_states]
+        )
+        stacked_next_states = np.vstack(
+            [state[np.newaxis, :] for state in all_next_states]
+        )
+
+        states_t = torch.Tensor(stacked_states)
+        next_states_t = torch.Tensor(stacked_next_states)
         actions_t = torch.Tensor(all_actions).int()
         rewards_t = torch.Tensor(all_rewards)
+
         perm = torch.randperm(len(all_states))[:num_train_examples]
         train_dataset = ExperienceBuffer(
             states_t[perm],
             actions_t[perm],
             rewards_t[perm],
+            next_states_t[perm],
         )
+
         return DataLoader(
             train_dataset,
             batch_size=train_batch_size,
@@ -55,11 +66,17 @@ class BaseAgent(abc.ABC):
         states: T.List[np_typing.NDArray],
         actions: T.List[int],
         rewards: T.List[float],
+        next_states: T.List[np_typing.NDArray],
         num_train_examples: int,
         train_batch_size: int,
     ) -> None:
         train_loader = self._get_dataloader(
-            states, actions, rewards, num_train_examples, train_batch_size
+            states,
+            actions,
+            rewards,
+            next_states,
+            num_train_examples,
+            train_batch_size,
         )
         self.learn(train_loader)
 

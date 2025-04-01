@@ -17,7 +17,12 @@ def train_dagger(
     render: bool = False,
 ):
     done = True
-    state_buffer, action_buffer, reward_buffer = [], [], []
+    next_state_buffer, state_buffer, action_buffer, reward_buffer = (
+        [],
+        [],
+        [],
+        [],
+    )
     mean_eval_rewards = []
     eval_steps = []
     episode_reward = 0.0
@@ -38,16 +43,18 @@ def train_dagger(
                 state_buffer,
                 action_buffer,
                 reward_buffer,
+                next_state_buffer,
                 train_set_size,
                 train_batch_size,
             )
         else:
+            next_state_buffer.append(next_state)
             state_buffer.append(state)
             action_buffer.append(action)
             reward_buffer.append(reward)
 
         if step % eval_every == 0 and eval_every > 0:
-            mean_eval_rewards.append(eval_agent(agent, env, num_eval_steps))
+            mean_eval_rewards.append(eval_agent(agent, num_eval_steps))
             eval_steps.append(step)
 
         state = next_state

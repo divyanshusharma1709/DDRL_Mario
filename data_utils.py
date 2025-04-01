@@ -8,10 +8,12 @@ class ExperienceBuffer(Dataset):
         states: torch.Tensor,
         actions: torch.Tensor,
         rewards: torch.Tensor,
+        next_states: torch.Tensor,
     ):
         self.states = states
         self.actions = actions
         self.rewards = rewards
+        self.next_states = next_states
 
     def __len__(self):
         return len(self.states)
@@ -21,4 +23,5 @@ class ExperienceBuffer(Dataset):
             self.states[idx],
             self.actions[idx],
             self.rewards[idx],
+            self.next_states[idx],
         )

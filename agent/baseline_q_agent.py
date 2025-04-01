@@ -66,7 +66,9 @@ class Q(nn.Module):
 
         self.to(self.device)
 
-    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, state: torch.Tensor, action: torch.Tensor
+    ) -> torch.Tensor:
         x_state = self.state_backbone(state)
         x_action = self.action_backbone(action).view(action.shape[0], -1)
         return self.reward_predictor(torch.cat([x_state, x_action], dim=-1))
@@ -75,13 +77,26 @@ class Q(nn.Module):
 class BasicQAgent(BaseAgent):
 
     def __init__(
-        self, num_actions: int, q_params: T.Mapping[str, T.Any], lr: float = 1e-4
+        self,
+        num_actions: int,
+        q_params: T.Mapping[str, T.Any],
+        lr: float = 1e-4,
+        gamma: float = 0.95,
     ):
+        self.gamma = gamma
         self.q = Q(**q_params)
         self.optim = torch.optim.AdamW(self.q.parameters(), lr=lr)
         self.num_actions = num_actions
         self.device = torch.device(
             "mps" if torch.backends.mps.is_available() else "cpu"
+        )
+
+    def a2t(self, action: int, batch_size: int) -> torch.Tensor:
+        return (
+            torch.Tensor([action])[None, :]
+            .int()
+            .repeat(batch_size, 1)
+            .to(self.device)
         )
 
     def eval(self):
@@ -92,26 +107,58 @@ class BasicQAgent(BaseAgent):
 
     def learn(self, train_data: DataLoader) -> None:
         self.train()
-        for batch in tqdm.tqdm(train_data, total=len(train_data), desc="Training"):
+        for batch in tqdm.tqdm(
+            train_data, total=len(train_data), desc="Training"
+        ):
 
-            state, action, actual_reward = batch
+            state, action, reward, next_state = batch
             state = state.to(self.device)
             action = action.to(self.device)
-            actual_reward = actual_reward.to(self.device)
+            reward = reward.to(self.device)
+            next_state = next_state.to(self.device)
 
-            predicted_reward = self.q(state, action).flatten()
-            loss = F.mse_loss(predicted_reward, actual_reward)
+            predicted_reward = self.q(state, action)
+            greedy_action = self.act(next_state, ep=0.0, return_tensor=True)
+            target = (
+                reward.view(-1, 1)
+                + self.gamma * self.q(next_state, greedy_action).detach()
+            )
+            loss = F.mse_loss(predicted_reward, target)
 
             self.optim.zero_grad()
             loss.backward()
             self.optim.step()
 
-    def act(self, state: np_typing.NDArray, ep: float = 0.0) -> int:
-        s = torch.Tensor(state.copy())[None, :].to(self.device)
-        as_ = [
-            torch.Tensor([a])[None, :].int().to(self.device)
-            for a in range(self.num_actions)
-        ]
+    def act(
+        self,
+        state: np_typing.NDArray,
+        ep: float = 0.0,
+        return_tensor: bool = False,
+    ) -> T.Union[np_typing.NDArray, torch.Tensor, int]:
+        if isinstance(state, np.ndarray):
+            s = torch.Tensor(state.copy())[None, :].to(self.device)
+        else:
+            s = state
+        batch_size = s.shape[0]
         if random.random() < 1 - ep:
-            return int(np.argmax([self.q(s, a).item() for a in as_]))
-        return random.choice(range(self.num_actions))
+            # compute the Q values for each action from the input state
+            action_rewards = [
+                self.q(s, self.a2t(a, batch_size)).detach()
+                for a in range(self.num_actions)
+            ]
+            stacked_action_rewards = torch.cat(action_rewards, dim=-1)
+            # compute the argmax over actions
+            result = torch.argmax(stacked_action_rewards, dim=-1)
+        else:
+            result = (
+                torch.Tensor(
+                    np.random.choice(self.num_actions, batch_size).reshape(
+                        -1, 1
+                    )
+                )
+                .int()
+                .to(self.device)
+            )
+        if batch_size == 1:
+            return int(result[0])
+        return result if return_tensor else result.cpu().numpy()

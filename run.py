@@ -22,12 +22,12 @@ if __name__ == "__main__":
     results = train_dagger(
         agent,
         env,
-        num_train_steps=100_000,
-        train_set_size=10_000,
-        train_batch_size=256,
-        train_every=2_500,
-        eval_every=2_500,
-        num_eval_steps=10_000,
+        num_train_steps=10_000,
+        train_set_size=1_000,
+        train_batch_size=64,
+        train_every=1_000,
+        eval_every=2_000,
+        num_eval_steps=1_000,
         render=True,
         ep=0.05,
     )

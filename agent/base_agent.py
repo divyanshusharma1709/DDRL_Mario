@@ -10,8 +10,8 @@ from data_utils import ExperienceBuffer
 
 class BaseAgent(abc.ABC):
 
-    def __init__(self) -> None:
-        raise ValueError("cannot instantiate a base agent")
+    def __init__(self, ep: float) -> None:
+        self.ep = ep
 
     @abc.abstractmethod
     def train(self) -> None:
@@ -30,24 +30,36 @@ class BaseAgent(abc.ABC):
         num_train_examples: int,
         train_batch_size: int,
     ):
+        # First sample the indices
+        idx = np.random.choice(
+            len(all_states), num_train_examples, replace=False
+        )
+
+        # Use the sampled indices to select the data
+        sampled_states = [all_states[i] for i in idx]
+        sampled_next_states = [all_next_states[i] for i in idx]
+        sampled_actions = [all_actions[i] for i in idx]
+        sampled_rewards = [all_rewards[i] for i in idx]
+
+        # Stack the sampled states and next states
         stacked_states = np.vstack(
-            [state[np.newaxis, :] for state in all_states]
+            [state[np.newaxis, :] for state in sampled_states]
         )
         stacked_next_states = np.vstack(
-            [state[np.newaxis, :] for state in all_next_states]
+            [state[np.newaxis, :] for state in sampled_next_states]
         )
 
+        # Convert to tensors
         states_t = torch.Tensor(stacked_states)
         next_states_t = torch.Tensor(stacked_next_states)
-        actions_t = torch.Tensor(all_actions).int()
-        rewards_t = torch.Tensor(all_rewards)
+        actions_t = torch.Tensor(sampled_actions).int()
+        rewards_t = torch.Tensor(sampled_rewards)
 
-        perm = torch.randperm(len(all_states))[:num_train_examples]
         train_dataset = ExperienceBuffer(
-            states_t[perm],
-            actions_t[perm],
-            rewards_t[perm],
-            next_states_t[perm],
+            states_t,
+            actions_t,
+            rewards_t,
+            next_states_t,
         )
 
         return DataLoader(
@@ -80,5 +92,16 @@ class BaseAgent(abc.ABC):
         )
         self.learn(train_loader)
 
-    def act(self, state: torch.Tensor, ep: float = 0.0) -> int:
+    @abc.abstractmethod
+    def act(self, state: torch.Tensor) -> int:
+        raise ValueError("subclass must implement")
+
+    @abc.abstractmethod
+    def save(
+        self, checkpoint_dir: str, step: int, metrics: T.Dict[str, T.Any]
+    ) -> None:
+        raise ValueError("subclass must implement")
+
+    @abc.abstractmethod
+    def load(self, checkpoint_dir: str, step: int) -> "BaseAgent":
         raise ValueError("subclass must implement")

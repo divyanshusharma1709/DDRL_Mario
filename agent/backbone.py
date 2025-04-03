@@ -12,6 +12,8 @@ class ConvNetBackbone(nn.Module):
         input_shape: T.Tuple[int, int, int],
         conv_layer_channels: T.List[int],
         output_dim: int,
+        conv_kernel_size: int = 3,
+        pooling_kernel_size: int = 4,
     ) -> None:
         super().__init__()
 
@@ -20,6 +22,8 @@ class ConvNetBackbone(nn.Module):
 
         # Track the spatial dimensions after each conv layer
         height, width = input_shape[:2]
+
+        self.pooling_kernel_size = pooling_kernel_size
 
         for num_channels in conv_layer_channels:
             conv_layers.append(
@@ -35,8 +39,8 @@ class ConvNetBackbone(nn.Module):
             # Update spatial dimensions
             # For a Conv2d with kernel_size=3, padding=0, stride=1:
             # new_dim = old_dim - kernel_size + 1
-            height = (height - 3 + 1) // 2
-            width = (width - 3 + 1) // 2
+            height = (height - conv_kernel_size + 1) // pooling_kernel_size
+            width = (width - conv_kernel_size + 1) // pooling_kernel_size
 
         self.batch_norms = nn.ModuleList(batch_norms)
         self.conv_layers = nn.ModuleList(conv_layers)
@@ -57,7 +61,7 @@ class ConvNetBackbone(nn.Module):
             x = conv_layer(x)
             x = batch_norm(x)
             x = F.relu(x)
-            x = F.max_pool2d(x, kernel_size=2)
+            x = F.max_pool2d(x, kernel_size=self.pooling_kernel_size)
         batch_size = x.shape[0]
         x = x.reshape(batch_size, -1)
         return self.fc(x)

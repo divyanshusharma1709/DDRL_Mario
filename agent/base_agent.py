@@ -5,6 +5,7 @@ import numpy as np
 import numpy.typing as np_typing
 import torch
 from torch.utils.data.dataloader import DataLoader
+import tqdm
 from data_utils import ExperienceBuffer
 
 
@@ -12,14 +13,9 @@ class BaseAgent(abc.ABC):
 
     def __init__(self, ep: float) -> None:
         self.ep = ep
-
-    @abc.abstractmethod
-    def train(self) -> None:
-        raise ValueError("subclass must implement")
-
-    @abc.abstractmethod
-    def eval(self) -> None:
-        raise ValueError("subclass must implement")
+        self.device = torch.device(
+            "mps" if torch.backends.mps.is_available() else "cpu"
+        )
 
     def _get_dataloader(
         self,
@@ -32,7 +28,9 @@ class BaseAgent(abc.ABC):
     ):
         # First sample the indices
         idx = np.random.choice(
-            len(all_states), num_train_examples, replace=False
+            len(all_states),
+            min(len(all_states), num_train_examples),
+            replace=False,
         )
 
         # Use the sampled indices to select the data
@@ -69,11 +67,19 @@ class BaseAgent(abc.ABC):
             drop_last=False,
         )
 
-    @abc.abstractmethod
-    def learn(self, train_data: DataLoader) -> None:
-        raise ValueError("subclass must implement")
+    def batch_learn(self, train_data: DataLoader) -> None:
+        for batch in tqdm.tqdm(
+            train_data, total=len(train_data), desc="Training"
+        ):
+            state, action, reward, next_state = batch
+            state = state.to(self.device)
+            action = action.to(self.device)
+            reward = reward.to(self.device)
+            next_state = next_state.to(self.device)
 
-    def update(
+            self.learn_one_step(state, action, reward, next_state)
+
+    def batch_update(
         self,
         states: T.List[np_typing.NDArray],
         actions: T.List[int],
@@ -90,7 +96,17 @@ class BaseAgent(abc.ABC):
             num_train_examples,
             train_batch_size,
         )
-        self.learn(train_loader)
+        self.batch_learn(train_loader)
+
+    @abc.abstractmethod
+    def learn_one_step(
+        self,
+        state: torch.Tensor,
+        action: torch.Tensor,
+        reward: torch.Tensor,
+        next_state: torch.Tensor,
+    ) -> None:
+        raise ValueError("subclass must implement")
 
     @abc.abstractmethod
     def act(self, state: torch.Tensor) -> int:
@@ -104,4 +120,12 @@ class BaseAgent(abc.ABC):
 
     @abc.abstractmethod
     def load(self, checkpoint_dir: str, step: int) -> "BaseAgent":
+        raise ValueError("subclass must implement")
+
+    @abc.abstractmethod
+    def train(self) -> None:
+        raise ValueError("subclass must implement")
+
+    @abc.abstractmethod
+    def eval(self) -> None:
         raise ValueError("subclass must implement")

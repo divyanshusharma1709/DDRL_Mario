@@ -92,9 +92,6 @@ class BasicQAgent(BaseAgent):
         self.q = Q(**q_params)
         self.optim = torch.optim.AdamW(self.q.parameters(), lr=lr)
         self.num_actions = num_actions
-        self.device = torch.device(
-            "mps" if torch.backends.mps.is_available() else "cpu"
-        )
 
     def a2t(self, action: int, batch_size: int) -> torch.Tensor:
         return (
@@ -110,36 +107,34 @@ class BasicQAgent(BaseAgent):
     def train(self):
         self.q.train()
 
-    def learn(self, train_data: DataLoader) -> None:
-
+    def learn_one_step(
+        self,
+        state: torch.Tensor,
+        action: torch.Tensor,
+        reward: torch.Tensor,
+        next_state: torch.Tensor,
+    ) -> None:
         self.train()
 
-        for batch in tqdm.tqdm(
-            train_data, total=len(train_data), desc="Training"
-        ):
-            state, action, reward, next_state = batch
-            state = state.to(self.device)
-            action = action.to(self.device)
-            reward = reward.to(self.device)
-            next_state = next_state.to(self.device)
+        predicted_reward = self.q(state, action)
+        greedy_action = self.act(
+            next_state,
+            greedy=True,
+            return_tensor=True,
+        )
+        target = (
+            reward.view(-1, 1)
+            + self.gamma * self.q(next_state, greedy_action).detach()
+        )
+        loss = F.mse_loss(predicted_reward, target)
 
-            predicted_reward = self.q(state, action)
-            greedy_action = self.act(
-                next_state, greedy=True, return_tensor=True
-            )
-            target = (
-                reward.view(-1, 1)
-                + self.gamma * self.q(next_state, greedy_action).detach()
-            )
-            loss = F.mse_loss(predicted_reward, target)
-
-            self.optim.zero_grad()
-            loss.backward()
-            self.optim.step()
+        self.optim.zero_grad()
+        loss.backward()
+        self.optim.step()
 
     def act(
         self,
-        state: np_typing.NDArray,
+        state: T.Union[np_typing.NDArray, torch.Tensor],
         greedy: bool = False,
         return_tensor: bool = False,
     ) -> T.Union[np_typing.NDArray, torch.Tensor, int]:
@@ -172,7 +167,7 @@ class BasicQAgent(BaseAgent):
             )
 
         if batch_size == 1:
-            return int(result[0])
+            return result if return_tensor else int(result[0])
 
         return result if return_tensor else result.cpu().numpy()
 

@@ -13,7 +13,7 @@ class ConvNetBackbone(nn.Module):
         conv_layer_channels: T.List[int],
         output_dim: int,
         conv_kernel_size: int = 3,
-        pooling_kernel_size: int = 4,
+        pooling_kernel_size: int = 2,
     ) -> None:
         super().__init__()
 

@@ -113,7 +113,7 @@ class BasicQAgent(BaseAgent):
         action: torch.Tensor,
         reward: torch.Tensor,
         next_state: torch.Tensor,
-    ) -> None:
+    ) -> int:
         self.train()
 
         predicted_reward = self.q(state, action)
@@ -131,6 +131,7 @@ class BasicQAgent(BaseAgent):
         self.optim.zero_grad()
         loss.backward()
         self.optim.step()
+        return loss.item()
 
     def act(
         self,

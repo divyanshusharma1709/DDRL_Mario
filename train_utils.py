@@ -77,7 +77,7 @@ def train_agent(
     }
 
     episode_reward = 0.0
-    pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
+    pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering/Training")
     for step in pbar:
         agent.eval()
         if done:
@@ -96,11 +96,15 @@ def train_agent(
             )
             action_tensor = torch.Tensor([[action]]).int()
             reward_tensor = torch.Tensor([[reward]])
-            agent.learn_one_step(
+            loss_val = agent.learn_one_step(
                 state_tensor.to(agent.device),
                 action_tensor.to(agent.device),
                 reward_tensor.to(agent.device),
                 next_state_tensor.to(agent.device),
+            )
+            pbar.set_postfix(
+                ep_reward=episode_reward,
+                loss=f"{loss_val:.4f}",
             )
         else:
             if step > 0 and step % train_every == 0:
@@ -112,15 +116,16 @@ def train_agent(
                     train_set_size,
                     train_batch_size,
                 )
+                pbar.set_postfix(ep_reward=episode_reward)
             else:
                 next_state_buffer.append(next_state)
                 state_buffer.append(state)
                 action_buffer.append(action)
                 reward_buffer.append(reward)
 
-        if do_eval and step % eval_every == 0 and eval_every > 0:
+        if do_eval and step % eval_every == 0 and step != 0 and eval_every > 0:
             eval_results_dict = eval_agent(
-                agent, num_eval_episodes, max_eval_steps_per_episode, render
+                agent, num_eval_episodes, max_eval_steps_per_episode, render, curr_train_step = step
             )
             metrics["average_eval_episode_reward"].append(
                 eval_results_dict["average_episode_reward"]

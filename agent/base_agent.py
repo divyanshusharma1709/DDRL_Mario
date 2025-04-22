@@ -13,9 +13,7 @@ class BaseAgent(abc.ABC):
 
     def __init__(self, ep: float) -> None:
         self.ep = ep
-        self.device = torch.device(
-            "mps" if torch.backends.mps.is_available() else "cpu"
-        )
+        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
     def _get_dataloader(
         self,
@@ -40,12 +38,8 @@ class BaseAgent(abc.ABC):
         sampled_rewards = [all_rewards[i] for i in idx]
 
         # Stack the sampled states and next states
-        stacked_states = np.vstack(
-            [state[np.newaxis, :] for state in sampled_states]
-        )
-        stacked_next_states = np.vstack(
-            [state[np.newaxis, :] for state in sampled_next_states]
-        )
+        stacked_states = np.vstack([state[np.newaxis, :] for state in sampled_states])
+        stacked_next_states = np.vstack([state[np.newaxis, :] for state in sampled_next_states])
 
         # Convert to tensors
         states_t = torch.Tensor(stacked_states)
@@ -68,9 +62,7 @@ class BaseAgent(abc.ABC):
         )
 
     def batch_learn(self, train_data: DataLoader) -> None:
-        for batch in tqdm.tqdm(
-            train_data, total=len(train_data), desc="Training"
-        ):
+        for batch in tqdm.tqdm(train_data, total=len(train_data), desc="Training"):
             state, action, reward, next_state = batch
             state = state.to(self.device)
             action = action.to(self.device)
@@ -113,9 +105,7 @@ class BaseAgent(abc.ABC):
         raise ValueError("subclass must implement")
 
     @abc.abstractmethod
-    def save(
-        self, checkpoint_dir: str, step: int, metrics: T.Dict[str, T.Any]
-    ) -> None:
+    def save(self, checkpoint_dir: str, step: int, metrics: T.Dict[str, T.Any]) -> None:
         raise ValueError("subclass must implement")
 
     @abc.abstractmethod

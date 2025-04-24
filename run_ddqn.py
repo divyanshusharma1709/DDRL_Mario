@@ -21,13 +21,13 @@ if __name__ == "__main__":
         lr=5e-5,
         gamma=0.95,
         ep=0.05,
-        target_update_freq=100  # Adjust as needed
+        target_update_freq=100,  # Adjust as needed
     )
 
     checkpoint_dir = "checkpoints"
 
     train_params = dict(
-        num_train_steps=10000, #Small for testing
+        num_train_steps=10000,  # Small for testing
         train_set_size=5000,
         train_every=1,
         save_every=10,

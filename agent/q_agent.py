@@ -6,10 +6,8 @@ import typing as T
 import numpy.typing as np_typing
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data.dataloader import DataLoader
-import tqdm
+from torch import nn
+from torch.nn import functional as F
 
 from agent.backbone import ConvNetBackbone
 from agent.base_agent import BaseAgent
@@ -17,14 +15,9 @@ from agent.base_agent import BaseAgent
 
 class Q(nn.Module):
 
-    def build_reward_predictor(
-        self, input_dim: int, hidden_layer_dims: T.List[int]
-    ) -> nn.Module:
+    def build_reward_predictor(self, input_dim: int, hidden_layer_dims: T.List[int]) -> nn.Module:
         layers = [
-            nn.Linear(
-                in_features=input_dim,
-                out_features=hidden_layer_dims[0],
-            ),
+            nn.Linear(in_features=input_dim, out_features=hidden_layer_dims[0]),
             nn.ReLU(),
         ]
         for h1, h2 in zip(hidden_layer_dims, hidden_layer_dims[1:]):
@@ -62,15 +55,11 @@ class Q(nn.Module):
             backbone_output_dim + action_emb_dim,
             reward_predictor_hidden_layer_dims,
         )
-        self.device = torch.device(
-            "mps" if torch.backends.mps.is_available() else "cpu"
-        )
+        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
         self.to(self.device)
 
-    def forward(
-        self, state: torch.Tensor, action: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         x_state = self.state_backbone(state)
         x_action = self.action_backbone(action).view(action.shape[0], -1)
         return self.reward_predictor(torch.cat([x_state, x_action], dim=-1))
@@ -94,12 +83,7 @@ class BasicQAgent(BaseAgent):
         self.num_actions = num_actions
 
     def a2t(self, action: int, batch_size: int) -> torch.Tensor:
-        return (
-            torch.Tensor([action])[None, :]
-            .int()
-            .repeat(batch_size, 1)
-            .to(self.device)
-        )
+        return torch.Tensor([action])[None, :].int().repeat(batch_size, 1).to(self.device)
 
     def eval(self):
         self.q.eval()
@@ -113,7 +97,7 @@ class BasicQAgent(BaseAgent):
         action: torch.Tensor,
         reward: torch.Tensor,
         next_state: torch.Tensor,
-    ) -> int:
+    ) -> None:
         self.train()
 
         predicted_reward = self.q(state, action)
@@ -122,16 +106,12 @@ class BasicQAgent(BaseAgent):
             greedy=True,
             return_tensor=True,
         )
-        target = (
-            reward.view(-1, 1)
-            + self.gamma * self.q(next_state, greedy_action).detach()
-        )
+        target = reward.view(-1, 1) + self.gamma * self.q(next_state, greedy_action).detach()
         loss = F.mse_loss(predicted_reward, target)
 
         self.optim.zero_grad()
         loss.backward()
         self.optim.step()
-        return loss.item()
 
     def act(
         self,
@@ -150,19 +130,14 @@ class BasicQAgent(BaseAgent):
         if random.random() < 1 - ep:
             # compute the Q values for each action from the input state
             action_rewards = [
-                self.q(s, self.a2t(a, batch_size)).detach()
-                for a in range(self.num_actions)
+                self.q(s, self.a2t(a, batch_size)).detach() for a in range(self.num_actions)
             ]
             stacked_action_rewards = torch.cat(action_rewards, dim=-1)
             # compute the argmax over actions
             result = torch.argmax(stacked_action_rewards, dim=-1)
         else:
             result = (
-                torch.Tensor(
-                    np.random.choice(self.num_actions, batch_size).reshape(
-                        -1, 1
-                    )
-                )
+                torch.Tensor(np.random.choice(self.num_actions, batch_size).reshape(-1, 1))
                 .int()
                 .to(self.device)
             )
@@ -179,18 +154,12 @@ class BasicQAgent(BaseAgent):
         path = self._get_model_path(checkpoint_dir, step)
         state = torch.load(path, weights_only=True)
         self.q.load_state_dict(state)
-        with open(
-            os.path.join(path, "metrics.json"), "r", encoding="utf-8"
-        ) as metrics_file:
+        with open(os.path.join(path, "metrics.json"), "r", encoding="utf-8") as metrics_file:
             return json.load(metrics_file)
 
-    def save(
-        self, checkpoint_dir: str, step: int, metrics: T.Dict[str, T.Any]
-    ) -> None:
+    def save(self, checkpoint_dir: str, step: int, metrics: T.Dict[str, T.Any]) -> None:
         path = self._get_model_path(checkpoint_dir, step)
         os.makedirs(path, exist_ok=True)
         torch.save(self.q.state_dict(), path + "/model.pt")
-        with open(
-            os.path.join(path, "metrics.json"), "w", encoding="utf-8"
-        ) as metrics_file:
+        with open(os.path.join(path, "metrics.json"), "w", encoding="utf-8") as metrics_file:
             json.dump(metrics, metrics_file)

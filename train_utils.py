@@ -85,7 +85,7 @@ def train_dqn_agent(
         agent.learn_one_step(state_stack[:-1], action, reward, state_stack[1:], done)
         state_stack = state_stack[1:]
 
-        if do_eval and step % eval_every == 0 and eval_every > 0:
+        if do_eval and step % eval_every == 0 and step != 0 and eval_every > 0:
             eval_results_dict = eval_agent(
                 agent=agent,
                 num_episodes=num_eval_episodes,

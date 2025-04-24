@@ -1,3 +1,4 @@
+import collections
 import json
 import os
 import random
@@ -9,8 +10,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from agent.backbone import ConvNetBackbone
 from agent.base_agent import BaseAgent
+from agent.backbone import ConvNetBackbone
 
 
 class Q(nn.Module):
@@ -33,7 +34,9 @@ class Q(nn.Module):
 
     def __init__(
         self,
-        backbone_input_shape: T.Tuple[int, int, int],
+        backbone_input_shape: T.Tuple[int, int],
+        backbone_channels_per_image: int,
+        backbone_frame_stack_size: int,
         backbone_conv_channels: T.List[int],
         backbone_output_dim: int,
         reward_predictor_hidden_layer_dims: T.List[int],
@@ -44,6 +47,8 @@ class Q(nn.Module):
 
         self.state_backbone = ConvNetBackbone(
             backbone_input_shape,
+            backbone_channels_per_image,
+            backbone_frame_stack_size,
             backbone_conv_channels,
             backbone_output_dim,
         )
@@ -93,20 +98,32 @@ class BasicQAgent(BaseAgent):
 
     def learn_one_step(
         self,
-        state: torch.Tensor,
-        action: torch.Tensor,
-        reward: torch.Tensor,
-        next_state: torch.Tensor,
+        states: np_typing.NDArray,
+        action: int,
+        reward: float,
+        next_states: np_typing.NDArray,
+        done: bool,
     ) -> None:
         self.train()
 
-        predicted_reward = self.q(state, action)
+        state = np.concatenate(states, axis=-1)
+        next_state = np.concatenate(next_states, axis=-1)
+
+        state_tensor = torch.Tensor(state[np.newaxis, ...].copy()).to(self.device)
+        next_state_tensor = torch.Tensor(next_state[np.newaxis, ...].copy()).to(self.device)
+        action_tensor = torch.Tensor([[action]]).int().to(self.device)
+        reward_tensor = torch.Tensor([[reward]]).to(self.device)
+
+        predicted_reward = self.q(state_tensor, action_tensor)
         greedy_action = self.act(
-            next_state,
+            next_state_tensor,
             greedy=True,
             return_tensor=True,
         )
-        target = reward.view(-1, 1) + self.gamma * self.q(next_state, greedy_action).detach()
+        target = (
+            reward_tensor.view(-1, 1)
+            + self.gamma * self.q(next_state_tensor, greedy_action).detach()
+        )
         loss = F.mse_loss(predicted_reward, target)
 
         self.optim.zero_grad()
@@ -115,15 +132,16 @@ class BasicQAgent(BaseAgent):
 
     def act(
         self,
-        state: T.Union[np_typing.NDArray, torch.Tensor],
+        states: T.Union[torch.Tensor, T.List[np_typing.NDArray]],
         greedy: bool = False,
         return_tensor: bool = False,
     ) -> T.Union[np_typing.NDArray, torch.Tensor, int]:
-
-        if isinstance(state, np.ndarray):
-            s = torch.Tensor(state.copy())[None, :].to(self.device)
+        if isinstance(states, torch.Tensor):
+            s = states
         else:
-            s = state
+            state = np.concatenate(states, axis=-1)
+            s = torch.Tensor(state.copy())[None, :].to(self.device)
+
         batch_size = s.shape[0]
 
         ep = 0.0 if greedy else self.ep

@@ -9,7 +9,9 @@ class ConvNetBackbone(nn.Module):
 
     def __init__(
         self,
-        input_shape: T.Tuple[int, int, int],
+        input_shape: T.Tuple[int, int],
+        channels_per_image: int,
+        frame_stack_size: int,
         conv_layer_channels: T.List[int],
         output_dim: int,
         conv_kernel_size: int = 3,
@@ -18,7 +20,7 @@ class ConvNetBackbone(nn.Module):
         super().__init__()
 
         conv_layers, batch_norms = [], []
-        prev_in_channels = input_shape[-1]
+        prev_in_channels = channels_per_image * frame_stack_size
 
         # Track the spatial dimensions after each conv layer
         height, width = input_shape[:2]
@@ -30,7 +32,7 @@ class ConvNetBackbone(nn.Module):
                 nn.Conv2d(
                     in_channels=prev_in_channels,
                     out_channels=num_channels,
-                    kernel_size=3,
+                    kernel_size=conv_kernel_size,
                 )
             )
             batch_norms.append(nn.BatchNorm2d(num_channels))

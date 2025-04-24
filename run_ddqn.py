@@ -1,14 +1,17 @@
 from nes_py.wrappers import JoypadSpace
 import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
-from agent.q_agent import BasicQAgent
+from agent.ddqn.ddqn_agent import DDQNAgent  # Use DDQN agent
 from train_utils import train_agent
+
+import warnings
+warnings.filterwarnings("ignore", message=".*SuperMarioBros-v0 is out of date.*")
 
 if __name__ == "__main__":
     env = gym_super_mario_bros.make("SuperMarioBros-v0")
     env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
-    agent = BasicQAgent(
+    agent = DDQNAgent(
         num_actions=env.action_space.n,
         q_params=dict(
             backbone_input_shape=(240, 256, 3),
@@ -19,19 +22,24 @@ if __name__ == "__main__":
             reward_predictor_hidden_layer_dims=[128, 64, 32],
         ),
         lr=5e-5,
+        gamma=0.95,
         ep=0.05,
+        target_update_freq=100  # Adjust as needed
     )
+    print("Switching to ", agent.device)
+    agent.q.to(agent.device)
+    agent.target_q.to(agent.device)
 
     checkpoint_dir = "checkpoints"
 
     train_params = dict(
-        num_train_steps=100000,
+        num_train_steps=10000, #Small for testing
         train_set_size=5000,
         train_every=1,
-        save_every=10000,
+        save_every=10,
         do_eval=True,
-        eval_every=5000,
-        num_eval_episodes=10,
+        eval_every=50,
+        num_eval_episodes=1,
         max_eval_steps_per_episode=5000,
         render=False,
     )

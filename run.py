@@ -1,7 +1,7 @@
 from nes_py.wrappers import JoypadSpace
 import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
-from agent.q_agent import BasicQAgent
+from agent.dqn_agent import BasicQAgent
 from train_utils import train_agent
 
 if __name__ == "__main__":

@@ -35,28 +35,18 @@ def train_agent(
     if params is None:
         params = {}
 
-    with open(
-        os.path.join(checkpoint_dir, "params.json"), "w", encoding="utf-8"
-    ) as params_file:
+    with open(os.path.join(checkpoint_dir, "params.json"), "w", encoding="utf-8") as params_file:
         json.dump(params, params_file)
 
     # Get parameters
     save_every = params.get("save_every", DEFAULT_PARAM_DICT["save_every"])
-    num_train_steps = params.get(
-        "num_train_steps", DEFAULT_PARAM_DICT["num_train_steps"]
-    )
-    train_set_size = params.get(
-        "train_set_size", DEFAULT_PARAM_DICT["train_set_size"]
-    )
-    train_batch_size = params.get(
-        "train_batch_size", DEFAULT_PARAM_DICT["train_batch_size"]
-    )
+    num_train_steps = params.get("num_train_steps", DEFAULT_PARAM_DICT["num_train_steps"])
+    train_set_size = params.get("train_set_size", DEFAULT_PARAM_DICT["train_set_size"])
+    train_batch_size = params.get("train_batch_size", DEFAULT_PARAM_DICT["train_batch_size"])
     train_every = params.get("train_every", DEFAULT_PARAM_DICT["train_every"])
     do_eval = params.get("do_eval", DEFAULT_PARAM_DICT["do_eval"])
     eval_every = params.get("eval_every", DEFAULT_PARAM_DICT["eval_every"])
-    num_eval_episodes = params.get(
-        "num_eval_episodes", DEFAULT_PARAM_DICT["num_eval_episodes"]
-    )
+    num_eval_episodes = params.get("num_eval_episodes", DEFAULT_PARAM_DICT["num_eval_episodes"])
     max_eval_steps_per_episode = params.get(
         "max_eval_steps_per_episode",
         DEFAULT_PARAM_DICT["max_eval_steps_per_episode"],
@@ -91,9 +81,7 @@ def train_agent(
 
         if train_every == 1:
             state_tensor = torch.Tensor(state[np.newaxis, ...].copy())
-            next_state_tensor = torch.Tensor(
-                next_state[np.newaxis, ...].copy()
-            )
+            next_state_tensor = torch.Tensor(next_state[np.newaxis, ...].copy())
             action_tensor = torch.Tensor([[action]]).int()
             reward_tensor = torch.Tensor([[reward]])
             loss_val = agent.learn_one_step(

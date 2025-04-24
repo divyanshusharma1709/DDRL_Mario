@@ -97,7 +97,7 @@ class BaseAgent(abc.ABC):
         action: torch.Tensor,
         reward: torch.Tensor,
         next_state: torch.Tensor,
-    ) -> None:
+    ) -> int:
         raise ValueError("subclass must implement")
 
     @abc.abstractmethod

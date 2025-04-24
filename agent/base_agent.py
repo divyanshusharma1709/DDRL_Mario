@@ -9,7 +9,12 @@ class BaseAgent(abc.ABC):
 
     def __init__(self, ep: float) -> None:
         self.ep = ep
-        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+        device = "cpu"
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif torch.backends.mps.is_available():
+            device = "mps"
+        self.device = device
 
     @abc.abstractmethod
     def learn_one_step(

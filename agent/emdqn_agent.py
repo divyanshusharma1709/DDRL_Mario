@@ -94,7 +94,7 @@ class EMDQNAgent(BasicQAgent):
         reward: float,
         next_states: np_typing.NDArray,
         done: bool,
-    ) -> None:
+    ) -> float:
         self.train()
 
         state = np.concatenate(states, axis=-1)
@@ -126,14 +126,6 @@ class EMDQNAgent(BasicQAgent):
         else:
             mem_loss = 0.0
 
-        # if mem_loss > 0:
-        #     print("Q", predicted_reward.item())
-        #     print("best remembered", best_remembered_reward)
-        #     print("target", target)
-        #     print("q loss", q_loss.item())
-        #     print("mem loss", mem_loss.item())
-        #     print("scaled mem loss", self.alpha * mem_loss.item())
-
         combined_loss = q_loss + self.alpha * mem_loss
 
         self.optim.zero_grad()
@@ -149,3 +141,5 @@ class EMDQNAgent(BasicQAgent):
                 self.episode_states, self.episode_actions, self.episode_rewards, self.gamma
             )
             self.reset_episode_memory()
+
+        return combined_loss.item()

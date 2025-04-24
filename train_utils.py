@@ -1,7 +1,8 @@
+import collections
 import json
 import os
 import numpy as np
-import torch
+import pandas as pd
 import typing as T
 import tqdm
 from gym import Env
@@ -23,6 +24,19 @@ DEFAULT_PARAM_DICT = dict(
     render=False,
     frame_stack_size=4,
 )
+
+
+def add_eval_metrics(eval_metrics: T.Dict[str, T.Any], eval_results_dict: T.Dict[str, T.Any]):
+    eval_metrics["average_eval_episode_reward"].append(eval_results_dict["average_episode_reward"])
+    eval_metrics["average_eval_episode_length"].append(eval_results_dict["average_episode_length"])
+    eval_metrics["average_eval_per_step_reward"].append(
+        eval_results_dict["average_per_step_reward"]
+    )
+
+
+def add_train_metrics(train_metrics: T.Dict[str, T.Any], step_metrics: T.Dict[str, T.Any]):
+    for key, value in step_metrics.items():
+        train_metrics[key].append(value)
 
 
 def train_dqn_agent(
@@ -53,16 +67,15 @@ def train_dqn_agent(
     render = params.get("render", DEFAULT_PARAM_DICT["render"])
     frame_stack_size = params.get("frame_stack_size", DEFAULT_PARAM_DICT["frame_stack_size"])
 
-    done = True
-    metrics = {
-        "average_eval_episode_reward": [],
-        "average_eval_episode_length": [],
-        "average_eval_per_step_reward": [],
-    }
+    eval_metrics = collections.defaultdict(list)
+    train_metrics = collections.defaultdict(list)
+    total_train_loss = 0.0
+    total_train_reward = 0.0
 
     episode_reward = 0.0
     prev_info = None
     state_stack = None
+    done = True
     pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
     for step in pbar:
         agent.eval()
@@ -82,7 +95,7 @@ def train_dqn_agent(
         custom_reward = compute_reward(reward, info, prev_info)
         episode_reward += custom_reward
 
-        agent.learn_one_step(state_stack[:-1], action, reward, state_stack[1:], done)
+        step_loss = agent.learn_one_step(state_stack[:-1], action, reward, state_stack[1:], done)
         state_stack = state_stack[1:]
 
         if do_eval and step % eval_every == 0 and step != 0 and eval_every > 0:
@@ -92,26 +105,39 @@ def train_dqn_agent(
                 max_eval_steps_per_episode=max_eval_steps_per_episode,
                 render=render,
                 frame_stack_size=frame_stack_size,
+                curr_train_step=step,
             )
-            metrics["average_eval_episode_reward"].append(
-                eval_results_dict["average_episode_reward"]
-            )
-            metrics["average_eval_episode_length"].append(
-                eval_results_dict["average_episode_length"]
-            )
-            metrics["average_eval_per_step_reward"].append(
-                eval_results_dict["average_per_step_reward"]
-            )
+            add_eval_metrics(eval_metrics, eval_results_dict)
 
         if step > 0 and step % save_every == 0:
-            agent.save(checkpoint_dir, step, metrics)
+            agent.save(checkpoint_dir, step, eval_metrics)
 
-        state = next_state.copy()
-        prev_info = info
+        total_train_reward += custom_reward
+        total_train_loss += step_loss
+        train_loss_per_step = total_train_loss / (step + 1)
+        train_reward_per_step = total_train_reward / (step + 1)
+        add_train_metrics(
+            train_metrics,
+            {
+                "step": step,
+                "train_loss_per_step": train_loss_per_step,
+                "train_reward_per_step": train_reward_per_step,
+            },
+        )
 
-        pbar.set_postfix(ep_reward=episode_reward, time_left=info["time"])
+        pbar.set_postfix(
+            ep_reward=episode_reward,
+            time=info["time"],
+            lps=train_loss_per_step,
+            rps=train_reward_per_step,
+        )
 
         if render:
             env.render()
 
-    agent.save(checkpoint_dir, num_train_steps, metrics)
+        state = next_state.copy()
+        prev_info = info
+
+    agent.save(checkpoint_dir, num_train_steps, eval_metrics)
+
+    pd.DataFrame(train_metrics).to_csv(f"{checkpoint_dir}/train_metrics.csv")

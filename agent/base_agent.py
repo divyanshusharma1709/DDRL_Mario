@@ -19,7 +19,7 @@ class BaseAgent(abc.ABC):
         reward: float,
         next_state: np_typing.NDArray,
         done: bool,
-    ) -> None:
+    ) -> float:
         raise NotImplementedError("subclass must implement")
 
     @abc.abstractmethod

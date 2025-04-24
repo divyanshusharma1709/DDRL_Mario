@@ -103,7 +103,7 @@ class BasicQAgent(BaseAgent):
         reward: float,
         next_states: np_typing.NDArray,
         done: bool,
-    ) -> None:
+    ) -> float:
         self.train()
 
         state = np.concatenate(states, axis=-1)
@@ -129,6 +129,8 @@ class BasicQAgent(BaseAgent):
         self.optim.zero_grad()
         loss.backward()
         self.optim.step()
+
+        return loss.item()
 
     def act(
         self,

@@ -76,6 +76,7 @@ def train_dqn_agent(
     episode_idx = 0
     episode_steps = 0
     episode_reward = 0.0
+    episode_max_x_pos = 0.0
 
     prev_info = None
     state_stack = None
@@ -104,7 +105,7 @@ def train_dqn_agent(
                         "ep_total_loss": episode_train_loss,
                         "ep_train_reward_per_step": episode_train_reward / (episode_steps + 1),
                         "ep_total_reward": episode_train_reward,
-                        "ep_final_x_pos": prev_info["x_pos"],
+                        "ep_final_x_pos": max(prev_info["x_pos"], episode_max_x_pos),
                     },
                 )
                 pd.DataFrame(train_metrics).to_csv(f"{checkpoint_dir}/train_metrics.csv")
@@ -114,6 +115,7 @@ def train_dqn_agent(
             episode_steps = 0
             episode_train_loss = 0.0
             episode_train_reward = 0.0
+            episode_max_x_pos = 0.0
 
             state = env.reset()
             state_stack = [np.zeros_like(state) for _ in range(frame_stack_size)]

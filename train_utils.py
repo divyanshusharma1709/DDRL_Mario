@@ -88,6 +88,7 @@ def train_dqn_agent(
     for step in pbar:
         agent.eval()
         if done or episode_steps > max_episode_steps:
+            print(train_metrics)
             if episode_steps > 0:
                 add_train_metrics(
                     train_metrics,
@@ -147,6 +148,7 @@ def train_dqn_agent(
 
         episode_train_reward += new_reward
         episode_train_loss += step_loss
+        episode_steps += 1
         state = next_state.copy()
         prev_info = info
 

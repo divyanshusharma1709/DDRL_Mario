@@ -81,17 +81,7 @@ def train_dqn_agent(
     prev_info = None
     state_stack = None
     done = True
-    try:
-        # Check if we're in a Jupyter notebook
-        if get_ipython() is not None and "IPKernelApp" in get_ipython().config:
-            # We're in a notebook
-            pbar = tqdm_notebook(range(num_train_steps), desc="Gathering")
-        else:
-            # We're in a regular Python environment
-            pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
-    except ImportError:
-        # IPython not available
-        pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
+    pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
     for step in pbar:
         agent.eval()
         if done or episode_steps >= max_episode_steps:
@@ -105,7 +95,7 @@ def train_dqn_agent(
                         "ep_total_loss": episode_train_loss,
                         "ep_train_reward_per_step": episode_train_reward / (episode_steps + 1),
                         "ep_total_reward": episode_train_reward,
-                        "ep_final_x_pos": max(prev_info["x_pos"], episode_max_x_pos),
+                        "ep_max_x_pos": max(prev_info["x_pos"], episode_max_x_pos),
                     },
                 )
                 pd.DataFrame(train_metrics).to_csv(f"{checkpoint_dir}/train_metrics.csv")
@@ -160,6 +150,7 @@ def train_dqn_agent(
         episode_train_reward += new_reward
         episode_train_loss += step_loss
         episode_steps += 1
+        episode_max_x_pos = max(episode_max_x_pos, info["x_pos"])
         state = next_state.copy()
         prev_info = info
 

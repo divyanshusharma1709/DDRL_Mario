@@ -130,6 +130,7 @@ class EMDQNAgent(BasicQAgent):
 
         self.optim.zero_grad()
         combined_loss.backward()
+        torch.nn.utils.clip_grad_value_(self.q.parameters(), 1.0)
         self.optim.step()
 
         self.episode_states.append(state)

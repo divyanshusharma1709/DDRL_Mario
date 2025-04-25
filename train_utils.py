@@ -66,6 +66,7 @@ def train_dqn_agent(
     )
     render = params.get("render", DEFAULT_PARAM_DICT["render"])
     frame_stack_size = params.get("frame_stack_size", DEFAULT_PARAM_DICT["frame_stack_size"])
+    use_custom_reward = params.get("use_custom_reward", False)
 
     eval_metrics = collections.defaultdict(list)
     train_metrics = collections.defaultdict(list)
@@ -102,6 +103,7 @@ def train_dqn_agent(
 
             state = env.reset()
             state_stack = [np.zeros_like(state) for _ in range(frame_stack_size)]
+            prev_info = None
 
         state_stack = state_stack[1:]
         state_stack.append(state)
@@ -111,8 +113,11 @@ def train_dqn_agent(
 
         state_stack.append(next_state)
 
-        custom_reward = compute_reward(reward, info, prev_info)
-        episode_reward += custom_reward
+        if use_custom_reward:
+            new_reward = compute_reward(reward, info, prev_info)
+        else:
+            new_reward = reward
+        episode_reward += new_reward
 
         step_loss = agent.learn_one_step(state_stack[:-1], action, reward, state_stack[1:], done)
         state_stack = state_stack[1:]
@@ -136,7 +141,7 @@ def train_dqn_agent(
         if render:
             env.render()
 
-        episode_train_reward += custom_reward
+        episode_train_reward += new_reward
         episode_train_loss += step_loss
         state = next_state.copy()
         prev_info = info

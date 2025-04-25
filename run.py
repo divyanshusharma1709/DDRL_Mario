@@ -9,6 +9,7 @@ import argparse
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train DQN agents on Super Mario Bros")
+    parser.add_argument("--use_custom_reward", action="store_true")
     parser.add_argument(
         "--num_train_steps", type=int, default=100_000, help="Number of training steps"
     )
@@ -100,6 +101,7 @@ if __name__ == "__main__":
         max_eval_steps_per_episode=args.max_eval_steps,
         render=args.render,
         frame_stack_size=args.frame_stack_size,
+        use_custom_reward=args.use_custom_reward,
     )
 
     if args.agent_type in ["emdqn", "both"]:

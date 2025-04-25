@@ -88,7 +88,6 @@ def train_dqn_agent(
     for step in pbar:
         agent.eval()
         if done or episode_steps > max_episode_steps:
-            print(train_metrics)
             if episode_steps > 0:
                 add_train_metrics(
                     train_metrics,

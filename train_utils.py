@@ -23,6 +23,7 @@ DEFAULT_PARAM_DICT = dict(
     max_eval_steps_per_episode=5000,
     render=False,
     frame_stack_size=4,
+    max_train_episode_steps=5000,
 )
 
 
@@ -67,6 +68,9 @@ def train_dqn_agent(
     render = params.get("render", DEFAULT_PARAM_DICT["render"])
     frame_stack_size = params.get("frame_stack_size", DEFAULT_PARAM_DICT["frame_stack_size"])
     use_custom_reward = params.get("use_custom_reward", False)
+    max_episode_steps = params.get(
+        "max_train_episode_steps", DEFAULT_PARAM_DICT["max_train_episode_steps"]
+    )
 
     eval_metrics = collections.defaultdict(list)
     train_metrics = collections.defaultdict(list)
@@ -83,7 +87,7 @@ def train_dqn_agent(
     pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
     for step in pbar:
         agent.eval()
-        if done:
+        if done or episode_steps > max_episode_steps:
             if episode_steps > 0:
                 add_train_metrics(
                     train_metrics,

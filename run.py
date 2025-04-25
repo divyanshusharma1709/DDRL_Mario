@@ -15,6 +15,7 @@ def parse_args():
     parser.add_argument(
         "--num_train_steps", type=int, default=100_000, help="Number of training steps"
     )
+    parser.add_argument("--max_train_episode_steps", type=int, default=5000)
     parser.add_argument("--save_every", type=int, default=10_000, help="Save checkpoint frequency")
     parser.add_argument("--eval_every", type=int, default=10_000, help="Evaluation frequency")
     parser.add_argument(
@@ -106,32 +107,35 @@ if __name__ == "__main__":
     env = gym_super_mario_bros.make("SuperMarioBros-v0")
     env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
-    q_params = dict(
-        backbone_input_shape=tuple(args.backbone_input_shape),
-        backbone_channels_per_image=args.backbone_channels,
-        backbone_frame_stack_size=args.frame_stack_size,
-        backbone_conv_channels=args.backbone_conv_channels,
-        backbone_output_dim=args.backbone_output_dim,
-        action_emb_table_size=env.action_space.n,
-        action_emb_dim=args.action_emb_dim,
-        reward_predictor_hidden_layer_dims=args.reward_predictor_dims,
-    )
+    num_actions = env.action_space.n
 
-    train_params = dict(
-        num_train_steps=args.num_train_steps,
-        save_every=args.save_every,
-        do_eval=True,
-        eval_every=args.eval_every,
-        num_eval_episodes=args.num_eval_episodes,
-        max_eval_steps_per_episode=args.max_eval_steps,
-        render=args.render,
-        frame_stack_size=args.frame_stack_size,
-        use_custom_reward=args.use_custom_reward,
-    )
+    q_params = {
+        "backbone_input_shape": tuple(args.backbone_input_shape),
+        "backbone_channels_per_image": args.backbone_channels,
+        "backbone_frame_stack_size": args.frame_stack_size,
+        "backbone_conv_channels": args.backbone_conv_channels,
+        "backbone_output_dim": args.backbone_output_dim,
+        "action_emb_table_size": num_actions,
+        "action_emb_dim": args.action_emb_dim,
+        "reward_predictor_hidden_layer_dims": args.reward_predictor_dims,
+    }
+
+    train_params = {
+        "num_train_steps": args.num_train_steps,
+        "save_every": args.save_every,
+        "do_eval": args.do_eval,
+        "eval_every": args.eval_every,
+        "num_eval_episodes": args.num_eval_episodes,
+        "max_eval_steps_per_episode": args.max_eval_steps,
+        "render": args.render,
+        "frame_stack_size": args.frame_stack_size,
+        "use_custom_reward": args.use_custom_reward,
+        "max_train_episode_steps": args.max_train_episode_steps,
+    }
 
     if args.agent_type in ["emdqn", "both"]:
         emdqn_agent = EMDQNAgent(
-            num_actions=env.action_space.n,
+            num_actions=num_actions,
             q_params=q_params,
             lr=args.lr,
             ep=args.ep,
@@ -149,7 +153,7 @@ if __name__ == "__main__":
 
     if args.agent_type in ["dqn", "both"]:
         dqn_agent = BasicQAgent(
-            num_actions=env.action_space.n,
+            num_actions=num_actions,
             q_params=q_params,
             lr=args.lr,
             ep=args.ep,

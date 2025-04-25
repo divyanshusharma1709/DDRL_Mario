@@ -79,7 +79,6 @@ def parse_args():
 
 
 def save_args_to_json(args: argparse.Namespace, directory: str) -> None:
-    """Save arguments to a JSON file in the specified directory."""
     os.makedirs(directory, exist_ok=True)
 
     # Convert args to a dictionary

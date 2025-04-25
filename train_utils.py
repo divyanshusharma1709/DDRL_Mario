@@ -9,6 +9,8 @@ from gym import Env
 from agent.base_agent import BaseAgent
 from eval_utils import eval_agent
 from rl_utils import compute_reward
+from IPython import get_ipython
+from tqdm.notebook import tqdm as tqdm_notebook
 
 
 DEFAULT_PARAM_DICT = dict(
@@ -46,14 +48,8 @@ def train_dqn_agent(
     checkpoint_dir: str = "checkpoints",
     params: T.Optional[T.Dict[str, T.Any]] = None,
 ):
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
-
     if params is None:
         params = {}
-
-    with open(os.path.join(checkpoint_dir, "params.json"), "w", encoding="utf-8") as params_file:
-        json.dump(params, params_file)
 
     # Get parameters
     save_every = params.get("save_every", DEFAULT_PARAM_DICT["save_every"])
@@ -84,7 +80,17 @@ def train_dqn_agent(
     prev_info = None
     state_stack = None
     done = True
-    pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
+    try:
+        # Check if we're in a Jupyter notebook
+        if get_ipython() is not None and "IPKernelApp" in get_ipython().config:
+            # We're in a notebook
+            pbar = tqdm_notebook(range(num_train_steps), desc="Gathering")
+        else:
+            # We're in a regular Python environment
+            pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
+    except ImportError:
+        # IPython not available
+        pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
     for step in pbar:
         agent.eval()
         if done or episode_steps > max_episode_steps:
@@ -154,3 +160,5 @@ def train_dqn_agent(
     agent.save(checkpoint_dir, num_train_steps, eval_metrics)
 
     pd.DataFrame(train_metrics).to_csv(f"{checkpoint_dir}/train_metrics.csv")
+    if do_eval:
+        pd.DataFrame(eval_metrics).to_csv(f"{checkpoint_dir}/eval_metrics.csv")

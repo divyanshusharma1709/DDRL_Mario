@@ -1,12 +1,14 @@
+import collections
 import json
 import os
 import numpy as np
-import torch
+import pandas as pd
 import typing as T
 import tqdm
 from gym import Env
 from agent.base_agent import BaseAgent
 from eval_utils import eval_agent
+from rl_utils import compute_reward
 
 
 DEFAULT_PARAM_DICT = dict(
@@ -20,10 +22,24 @@ DEFAULT_PARAM_DICT = dict(
     num_eval_episodes=10,
     max_eval_steps_per_episode=5000,
     render=False,
+    frame_stack_size=4,
 )
 
 
-def train_agent(
+def add_eval_metrics(eval_metrics: T.Dict[str, T.Any], eval_results_dict: T.Dict[str, T.Any]):
+    eval_metrics["average_eval_episode_reward"].append(eval_results_dict["average_episode_reward"])
+    eval_metrics["average_eval_episode_length"].append(eval_results_dict["average_episode_length"])
+    eval_metrics["average_eval_per_step_reward"].append(
+        eval_results_dict["average_per_step_reward"]
+    )
+
+
+def add_train_metrics(train_metrics: T.Dict[str, T.Any], step_metrics: T.Dict[str, T.Any]):
+    for key, value in step_metrics.items():
+        train_metrics[key].append(value)
+
+
+def train_dqn_agent(
     agent: BaseAgent,
     env: Env,
     checkpoint_dir: str = "checkpoints",
@@ -41,9 +57,6 @@ def train_agent(
     # Get parameters
     save_every = params.get("save_every", DEFAULT_PARAM_DICT["save_every"])
     num_train_steps = params.get("num_train_steps", DEFAULT_PARAM_DICT["num_train_steps"])
-    train_set_size = params.get("train_set_size", DEFAULT_PARAM_DICT["train_set_size"])
-    train_batch_size = params.get("train_batch_size", DEFAULT_PARAM_DICT["train_batch_size"])
-    train_every = params.get("train_every", DEFAULT_PARAM_DICT["train_every"])
     do_eval = params.get("do_eval", DEFAULT_PARAM_DICT["do_eval"])
     eval_every = params.get("eval_every", DEFAULT_PARAM_DICT["eval_every"])
     num_eval_episodes = params.get("num_eval_episodes", DEFAULT_PARAM_DICT["num_eval_episodes"])
@@ -52,84 +65,87 @@ def train_agent(
         DEFAULT_PARAM_DICT["max_eval_steps_per_episode"],
     )
     render = params.get("render", DEFAULT_PARAM_DICT["render"])
+    frame_stack_size = params.get("frame_stack_size", DEFAULT_PARAM_DICT["frame_stack_size"])
+    use_custom_reward = params.get("use_custom_reward", False)
 
-    done = True
-    next_state_buffer, state_buffer, action_buffer, reward_buffer = (
-        [],
-        [],
-        [],
-        [],
-    )
+    eval_metrics = collections.defaultdict(list)
+    train_metrics = collections.defaultdict(list)
 
-    metrics = {
-        "average_eval_episode_reward": [],
-        "average_eval_episode_length": [],
-    }
-
+    episode_train_loss = 0.0
+    episode_train_reward = 0.0
+    episode_idx = 0
+    episode_steps = 0
     episode_reward = 0.0
-    pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering/Training")
+
+    prev_info = None
+    state_stack = None
+    done = True
+    pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
     for step in pbar:
         agent.eval()
         if done:
-            episode_reward = 0.0
-            state = env.reset()
-
-        action = agent.act(state)
-        next_state, reward, done, _ = env.step(action)
-
-        episode_reward += reward
-
-        if train_every == 1:
-            state_tensor = torch.Tensor(state[np.newaxis, ...].copy())
-            next_state_tensor = torch.Tensor(next_state[np.newaxis, ...].copy())
-            action_tensor = torch.Tensor([[action]]).int()
-            reward_tensor = torch.Tensor([[reward]])
-            loss_val = agent.learn_one_step(
-                state_tensor.to(agent.device),
-                action_tensor.to(agent.device),
-                reward_tensor.to(agent.device),
-                next_state_tensor.to(agent.device),
-            )
-            pbar.set_postfix(
-                ep_reward=episode_reward,
-                loss=f"{loss_val:.4f}",
-            )
-        else:
-            if step > 0 and step % train_every == 0:
-                agent.batch_update(
-                    state_buffer,
-                    action_buffer,
-                    reward_buffer,
-                    next_state_buffer,
-                    train_set_size,
-                    train_batch_size,
+            if episode_steps > 0:
+                add_train_metrics(
+                    train_metrics,
+                    {
+                        "ep_idx": episode_idx,
+                        "ep_steps": episode_steps,
+                        "ep_train_loss_per_step": episode_train_loss / (episode_steps + 1),
+                        "ep_train_reward_per_step": episode_train_reward / (episode_steps + 1),
+                    },
                 )
-                pbar.set_postfix(ep_reward=episode_reward)
-            else:
-                next_state_buffer.append(next_state)
-                state_buffer.append(state)
-                action_buffer.append(action)
-                reward_buffer.append(reward)
+
+            episode_idx += 1
+            episode_reward = 0.0
+            episode_steps = 0
+            episode_train_loss = 0.0
+            episode_train_reward = 0.0
+
+            state = env.reset()
+            state_stack = [np.zeros_like(state) for _ in range(frame_stack_size)]
+            prev_info = None
+
+        state_stack = state_stack[1:]
+        state_stack.append(state)
+
+        action = agent.act(state_stack)
+        next_state, reward, done, info = env.step(action)
+
+        state_stack.append(next_state)
+
+        if use_custom_reward:
+            new_reward = compute_reward(reward, info, prev_info)
+        else:
+            new_reward = reward
+        episode_reward += new_reward
+
+        step_loss = agent.learn_one_step(state_stack[:-1], action, reward, state_stack[1:], done)
+        state_stack = state_stack[1:]
 
         if do_eval and step % eval_every == 0 and step != 0 and eval_every > 0:
             eval_results_dict = eval_agent(
-                agent, num_eval_episodes, max_eval_steps_per_episode, render, curr_train_step = step
+                agent=agent,
+                num_episodes=num_eval_episodes,
+                max_eval_steps_per_episode=max_eval_steps_per_episode,
+                render=render,
+                frame_stack_size=frame_stack_size,
+                curr_train_step=step,
             )
-            metrics["average_eval_episode_reward"].append(
-                eval_results_dict["average_episode_reward"]
-            )
-            metrics["average_eval_episode_length"].append(
-                eval_results_dict["average_episode_length"]
-            )
+            add_eval_metrics(eval_metrics, eval_results_dict)
 
         if step > 0 and step % save_every == 0:
-            agent.save(checkpoint_dir, step, metrics)
+            agent.save(checkpoint_dir, step, eval_metrics)
 
-        state = next_state
-
-        pbar.set_postfix(ep_reward=episode_reward)
+        pbar.set_postfix(ep_reward=episode_reward, time=info["time"])
 
         if render:
             env.render()
 
-    agent.save(checkpoint_dir, num_train_steps, metrics)
+        episode_train_reward += new_reward
+        episode_train_loss += step_loss
+        state = next_state.copy()
+        prev_info = info
+
+    agent.save(checkpoint_dir, num_train_steps, eval_metrics)
+
+    pd.DataFrame(train_metrics).to_csv(f"{checkpoint_dir}/train_metrics.csv")

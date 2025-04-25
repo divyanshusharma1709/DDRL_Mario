@@ -101,7 +101,9 @@ def train_dqn_agent(
                         "ep_idx": episode_idx,
                         "ep_steps": episode_steps,
                         "ep_train_loss_per_step": episode_train_loss / (episode_steps + 1),
+                        "ep_total_loss": episode_train_loss,
                         "ep_train_reward_per_step": episode_train_reward / (episode_steps + 1),
+                        "ep_total_reward": episode_train_reward,
                     },
                 )
                 pd.DataFrame(train_metrics).to_csv(f"{checkpoint_dir}/train_metrics.csv")

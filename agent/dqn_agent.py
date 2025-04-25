@@ -139,7 +139,7 @@ class BasicQAgent(BaseAgent):
         return_tensor: bool = False,
     ) -> T.Union[np_typing.NDArray, torch.Tensor, int]:
         if isinstance(states, torch.Tensor):
-            s = states
+            s = states.to(self.device)
         else:
             state = np.concatenate(states, axis=-1)
             s = torch.Tensor(state.copy())[None, :].to(self.device)

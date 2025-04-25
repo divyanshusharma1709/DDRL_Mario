@@ -143,7 +143,7 @@ if __name__ == "__main__":
         train_dqn_agent(
             emdqn_agent,
             env,
-            f"{args.checkpoint_dir}_emdqn_alpha_mem={args.alpha_mem}_lr={args.lr}",
+            args.checkpoint_dir,
             train_params,
         )
 
@@ -158,6 +158,6 @@ if __name__ == "__main__":
         train_dqn_agent(
             dqn_agent,
             env,
-            f"{args.checkpoint_dir}_dqn_lr={args.lr}",
+            args.checkpoint_dir,
             train_params,
         )

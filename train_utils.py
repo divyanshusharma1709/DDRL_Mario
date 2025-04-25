@@ -69,10 +69,13 @@ def train_dqn_agent(
 
     eval_metrics = collections.defaultdict(list)
     train_metrics = collections.defaultdict(list)
-    total_train_loss = 0.0
-    total_train_reward = 0.0
 
+    episode_train_loss = 0.0
+    episode_train_reward = 0.0
+    episode_idx = 0
+    episode_steps = 0
     episode_reward = 0.0
+
     prev_info = None
     state_stack = None
     done = True
@@ -80,7 +83,23 @@ def train_dqn_agent(
     for step in pbar:
         agent.eval()
         if done:
+            if episode_steps > 0:
+                add_train_metrics(
+                    train_metrics,
+                    {
+                        "ep_idx": episode_idx,
+                        "ep_steps": episode_steps,
+                        "ep_train_loss_per_step": episode_train_loss / (episode_steps + 1),
+                        "ep_train_reward_per_step": episode_train_reward / (episode_steps + 1),
+                    },
+                )
+
+            episode_idx += 1
             episode_reward = 0.0
+            episode_steps = 0
+            episode_train_loss = 0.0
+            episode_train_reward = 0.0
+
             state = env.reset()
             state_stack = [np.zeros_like(state) for _ in range(frame_stack_size)]
 
@@ -112,29 +131,13 @@ def train_dqn_agent(
         if step > 0 and step % save_every == 0:
             agent.save(checkpoint_dir, step, eval_metrics)
 
-        total_train_reward += custom_reward
-        total_train_loss += step_loss
-        train_loss_per_step = total_train_loss / (step + 1)
-        train_reward_per_step = total_train_reward / (step + 1)
-        add_train_metrics(
-            train_metrics,
-            {
-                "step": step,
-                "train_loss_per_step": train_loss_per_step,
-                "train_reward_per_step": train_reward_per_step,
-            },
-        )
-
-        pbar.set_postfix(
-            ep_reward=episode_reward,
-            time=info["time"],
-            lps=train_loss_per_step,
-            rps=train_reward_per_step,
-        )
+        pbar.set_postfix(ep_reward=episode_reward, time=info["time"])
 
         if render:
             env.render()
 
+        episode_train_reward += custom_reward
+        episode_train_loss += step_loss
         state = next_state.copy()
         prev_info = info
 

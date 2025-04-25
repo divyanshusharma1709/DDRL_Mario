@@ -93,7 +93,7 @@ def train_dqn_agent(
         pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
     for step in pbar:
         agent.eval()
-        if done or episode_steps > max_episode_steps:
+        if done or episode_steps >= max_episode_steps:
             if episode_steps > 0:
                 add_train_metrics(
                     train_metrics,
@@ -104,6 +104,7 @@ def train_dqn_agent(
                         "ep_total_loss": episode_train_loss,
                         "ep_train_reward_per_step": episode_train_reward / (episode_steps + 1),
                         "ep_total_reward": episode_train_reward,
+                        "ep_final_x_pos": prev_info["x_pos"],
                     },
                 )
                 pd.DataFrame(train_metrics).to_csv(f"{checkpoint_dir}/train_metrics.csv")

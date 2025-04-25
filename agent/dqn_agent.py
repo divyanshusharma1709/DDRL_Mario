@@ -42,6 +42,7 @@ class Q(nn.Module):
         reward_predictor_hidden_layer_dims: T.List[int],
         action_emb_table_size: int,
         action_emb_dim: int,
+        device: str,
     ) -> None:
         super().__init__()
 
@@ -60,9 +61,8 @@ class Q(nn.Module):
             backbone_output_dim + action_emb_dim,
             reward_predictor_hidden_layer_dims,
         )
-        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-        self.to(self.device)
+        self.to(device)
 
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         x_state = self.state_backbone(state)
@@ -83,7 +83,7 @@ class BasicQAgent(BaseAgent):
         super().__init__(ep)
 
         self.gamma = gamma
-        self.q = Q(**q_params)
+        self.q = Q(device=self.device, **q_params)
         self.optim = torch.optim.AdamW(self.q.parameters(), lr=lr)
         self.num_actions = num_actions
 
@@ -139,7 +139,7 @@ class BasicQAgent(BaseAgent):
         return_tensor: bool = False,
     ) -> T.Union[np_typing.NDArray, torch.Tensor, int]:
         if isinstance(states, torch.Tensor):
-            s = states.to(self.device)
+            s = states
         else:
             state = np.concatenate(states, axis=-1)
             s = torch.Tensor(state.copy())[None, :].to(self.device)

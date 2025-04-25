@@ -104,6 +104,7 @@ def train_dqn_agent(
                         "ep_train_reward_per_step": episode_train_reward / (episode_steps + 1),
                     },
                 )
+                pd.DataFrame(train_metrics).to_csv(f"{checkpoint_dir}/train_metrics.csv")
 
             episode_idx += 1
             episode_reward = 0.0
@@ -158,7 +159,6 @@ def train_dqn_agent(
         prev_info = info
 
     agent.save(checkpoint_dir, num_train_steps, eval_metrics)
-
     pd.DataFrame(train_metrics).to_csv(f"{checkpoint_dir}/train_metrics.csv")
     if do_eval:
         pd.DataFrame(eval_metrics).to_csv(f"{checkpoint_dir}/eval_metrics.csv")

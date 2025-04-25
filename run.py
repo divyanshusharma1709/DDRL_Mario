@@ -1,3 +1,5 @@
+import os
+import json
 from nes_py.wrappers import JoypadSpace
 import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
@@ -75,8 +77,31 @@ def parse_args():
     return parser.parse_args()
 
 
+def save_args_to_json(args: argparse.Namespace, directory: str) -> None:
+    """Save arguments to a JSON file in the specified directory."""
+    os.makedirs(directory, exist_ok=True)
+
+    # Convert args to a dictionary
+    args_dict: dict = vars(args)
+
+    # Convert any non-serializable types to strings or appropriate formats
+    for key, value in args_dict.items():
+        if isinstance(value, (list, tuple)):
+            args_dict[key] = list(value)
+
+    # Write to JSON file
+    with open(os.path.join(directory, "params.json"), "w", encoding="utf-8") as f:
+        json.dump(args_dict, f, indent=4)
+
+
 if __name__ == "__main__":
     args = parse_args()
+
+    # Create the checkpoint directory if it doesn't exist
+    os.makedirs(args.checkpoint_dir, exist_ok=True)
+
+    # Save arguments to JSON file in the checkpoint directory
+    save_args_to_json(args, args.checkpoint_dir)
 
     env = gym_super_mario_bros.make("SuperMarioBros-v0")
     env = JoypadSpace(env, SIMPLE_MOVEMENT)

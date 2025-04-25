@@ -8,8 +8,6 @@ def compute_reward(
 ) -> float:
     if prev_info is None:
         return base_reward
-    if base_reward == 0:
-        base_reward = -1
     lives_reward = -100 if info["life"] < prev_info["life"] else 0
     score_reward = (info["score"] - prev_info["score"]) / 100
     if info["status"] != prev_info["status"]:

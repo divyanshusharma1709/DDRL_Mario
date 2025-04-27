@@ -1,3 +1,4 @@
+import pprint
 import os
 import json
 from agent.dqn_agent import BasicQAgent
@@ -66,7 +67,7 @@ def parse_args():
         "--backbone_conv_channels",
         type=int,
         nargs="+",
-        default=[32, 64, 64],
+        default=[32, 64, 128, 256],
         help="Conv channels for backbone",
     )
     parser.add_argument(
@@ -77,7 +78,7 @@ def parse_args():
         "--reward_predictor_dims",
         type=int,
         nargs="+",
-        default=[512],
+        default=[512, 128, 32],
         help="Reward predictor hidden layers",
     )
     parser.add_argument("--replay_buffer_batch_size", type=int, default=1024)
@@ -92,6 +93,8 @@ def save_args_to_json(args: argparse.Namespace, directory: str) -> None:
 
     # Convert args to a dictionary
     args_dict: dict = vars(args)
+
+    pprint.pprint(args_dict)
 
     # Convert any non-serializable types to strings or appropriate formats
     for key, value in args_dict.items():

@@ -2,7 +2,7 @@ import collections
 import typing as T
 import numpy.typing as np_typing
 
-from torch.utils.data import RandomSampler
+from torch.utils.data import WeightedRandomSampler
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import Dataset
 
@@ -51,10 +51,14 @@ class ReplayBuffer:
         # If n is larger than the buffer size, adjust it
         sample_size = min(n, len(self))
 
+        weights = [abs(dataset[i]["reward"]) for i in range(len(dataset))]
+
         return DataLoader(
             dataset,
             batch_size=min(self.batch_size, sample_size),
-            sampler=RandomSampler(dataset, replacement=False, num_samples=sample_size),
+            sampler=WeightedRandomSampler(
+                weights=weights, replacement=False, num_samples=sample_size
+            ),
             drop_last=False,
         )
 

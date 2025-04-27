@@ -5,6 +5,7 @@ import numpy as np
 import numpy.typing as np_typing
 import torch
 import torch.nn.functional as F
+from torch.utils.data.dataloader import DataLoader
 
 from agent.dqn_agent import BasicQAgent
 
@@ -95,20 +96,29 @@ class EMDQNAgent(BasicQAgent):
         self.episode_actions = []
         self.episode_rewards = []
 
-    def learn_one_step(
+    def update_state(
+        self, step: int, state: np_typing.NDArray, action: int, reward: float, done: bool
+    ):
+        self.episode_states.append(state)
+        self.episode_actions.append(action)
+        self.episode_rewards.append(reward)
+
+        if done or len(self.episode_states) == self.memory_update_freq:
+            self.bank.add_episode(
+                self.episode_states, self.episode_actions, self.episode_rewards, self.gamma
+            )
+            self.reset_episode_memory()
+
+        super().update_state(step, state, action, reward, done)
+
+    def compute_loss(
         self,
         step: int,
-        state: np_typing.NDArray,
-        action: int,
-        reward: float,
-        next_state: np_typing.NDArray,
-        done: bool,
-    ) -> float:
-        self.train()
-
-        state_tensor, action_tensor, reward_tensor, next_state_tensor = self.tensorize(
-            state, action, reward, next_state
-        )
+        state_tensor: torch.Tensor,
+        action_tensor: torch.Tensor,
+        reward_tensor: torch.Tensor,
+        next_state_tensor: torch.Tensor,
+    ) -> torch.Tensor:
 
         predicted_reward = self.q(state_tensor, action_tensor)
         greedy_action = self.act(
@@ -123,33 +133,15 @@ class EMDQNAgent(BasicQAgent):
         )
         q_loss = F.mse_loss(predicted_reward, target)
 
-        best_remembered_reward = self.bank.state_value_lookup(state, action)
-        if best_remembered_reward is not None:
-            self.memory_hits += 1
-            mem_loss = F.mse_loss(
-                predicted_reward, torch.Tensor([[best_remembered_reward]]).to(self.device)
-            )
-        else:
-            mem_loss = 0.0
+        # look up each state in the batch in memory. if there, add loss for it
+        batch_size = state_tensor.shape[0]
+        mem_loss = 0.0
+        for i in range(batch_size):
+            state = state_tensor[i].cpu().numpy()
+            action = int(action_tensor[i].item())
+            best_remembered_reward = self.bank.state_value_lookup(state, action)
+            if best_remembered_reward is not None:
+                self.memory_hits += 1
+                mem_loss += (best_remembered_reward - predicted_reward[i, 0]) ** 2 / batch_size
 
-        combined_loss = q_loss + self.alpha * mem_loss
-
-        self.optim.zero_grad()
-        combined_loss.backward()
-        torch.nn.utils.clip_grad_value_(self.q.parameters(), 1.0)
-        self.optim.step()
-
-        self.episode_states.append(state)
-        self.episode_actions.append(action)
-        self.episode_rewards.append(reward)
-
-        if done or len(self.episode_states) == self.memory_update_freq:
-            self.bank.add_episode(
-                self.episode_states, self.episode_actions, self.episode_rewards, self.gamma
-            )
-            self.reset_episode_memory()
-
-        if step % self.num_steps_between_target_updates == 0:
-            self.q_target.load_state_dict(self.q.state_dict())
-
-        return combined_loss.item()
+        return q_loss + self.alpha * mem_loss

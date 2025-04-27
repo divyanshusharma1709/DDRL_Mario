@@ -81,15 +81,20 @@ class BasicQAgent(BaseAgent):
         gamma: float = 0.95,
         num_steps_between_target_updates: int = 1,
     ):
-        super().__init__(ep_sched_params)
 
         self.gamma = gamma
-        self.q = Q(device=self.device, **q_params)
-        self.q_target = Q(device=self.device, **q_params)
+        self.q = Q(device="cpu", **q_params)
+        self.q_target = Q(device="cpu", **q_params)
         self.q_target.load_state_dict(self.q.state_dict())
-        self.optim = torch.optim.AdamW(self.q.parameters(), lr=lr)
+        optim = torch.optim.AdamW(self.q.parameters(), lr=lr)
+        # overrides device
+        super().__init__(ep_sched_params, optim)
         self.num_actions = num_actions
-        self.target_network_update_steps = num_steps_between_target_updates
+        self.num_steps_between_target_updates = num_steps_between_target_updates
+
+        # use device from after super call
+        self.q.to(self.device)
+        self.q_target.to(self.device)
 
     def a2t(self, action: int, batch_size: int) -> torch.Tensor:
         return torch.Tensor([action])[None, :].int().repeat(batch_size, 1).to(self.device)
@@ -99,35 +104,6 @@ class BasicQAgent(BaseAgent):
 
     def train(self):
         self.q.train()
-
-    def learn_one_step(
-        self,
-        step: int,
-        state: np_typing.NDArray,
-        action: int,
-        reward: float,
-        next_state: np_typing.NDArray,
-        done: bool,
-        update_target_network: bool = True,
-    ) -> float:
-        self.train()
-
-        state_tensor, action_tensor, reward_tensor, next_state_tensor = self.tensorize(
-            state, action, reward, next_state
-        )
-
-        loss = self.compute_loss(
-            step, state_tensor, action_tensor, reward_tensor, next_state_tensor
-        )
-
-        self.optim.zero_grad()
-        loss.backward()
-        self.optim.step()
-
-        if update_target_network and step % self.target_network_update_steps == 0:
-            self.q_target.load_state_dict(self.q.state_dict())
-
-        return loss.item()
 
     def compute_loss(
         self,
@@ -151,21 +127,9 @@ class BasicQAgent(BaseAgent):
         loss = F.mse_loss(predicted_reward, target)
         return loss
 
-    def learn_batch(self, step: int, dataloader: DataLoader) -> float:
-        total_loss = 0.0
-        for batch in tqdm.tqdm(dataloader, total=len(dataloader)):
-            state, action, reward, next_state = (
-                batch["state"].to(dtype=torch.float32).to(self.device),
-                batch["action"].to(self.device),
-                batch["reward"].to(dtype=torch.float32).to(self.device),
-                batch["next_state"].to(dtype=torch.float32).to(self.device),
-            )
-            loss = self.compute_loss(step, state, action, reward, next_state)
-            self.optim.zero_grad()
-            loss.backward()
-            self.optim.step()
-            total_loss += loss.item()
-        return total_loss / len(dataloader)
+    def update_state(self, step, state, action, reward, done):
+        if step % self.num_steps_between_target_updates == 0:
+            self.q_target.load_state_dict(self.q.state_dict())
 
     def act(
         self,

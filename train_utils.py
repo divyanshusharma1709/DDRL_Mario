@@ -120,31 +120,27 @@ def train_dqn_agent(
             prev_info = None
 
         state = state.__array__()
-
         action = agent.act(step, state)
         next_state, reward, done, info = env.step(action)
-
         next_state = next_state.__array__()
-
         if use_custom_reward:
             new_reward = compute_reward(reward, info, prev_info)
         else:
             new_reward = reward
         episode_reward += new_reward
 
-        # step_loss = agent.learn_one_step(step, state, action, reward, next_state, done)
-
         step_loss = agent.compute_loss(
             step, *agent.tensorize(state, action, reward, next_state)
         ).item()
 
-        # False is to avoid updating target network during replay
         replay_buffer.store(state, action, reward, next_state)
 
         if step > 0 and step % agent_update_frequency == 0:
             sample_size = min(replay_buffer_sample_size, len(replay_buffer))
             sample = replay_buffer.sample(n=sample_size)
             agent.learn_batch(step, sample)
+
+        agent.update_state(step, state, action, reward, done)
 
         if do_eval and step % eval_every == 0 and step != 0 and eval_every > 0:
             eval_results_dict = eval_agent(

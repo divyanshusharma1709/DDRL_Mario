@@ -9,11 +9,11 @@ import numpy.typing as np_typing
 import typing as T
 
 from agent.base_agent import BaseAgent
-from agent.Q_DDQN import Qv2 as Q  # <- Your new clean Q network
+from agent.Q_DDQN import Qv2 as Q
 from agent.ddqn.replay import ReplayBuffer
 
 class DDQNAgent(BaseAgent):
-    def __init__(self, num_actions, q_params, lr=1e-4, gamma=0.95, ep=0.05, target_update_freq=100):
+    def __init__(self, num_actions, q_params, lr=2.5e-4, gamma=0.95, ep=0.05, target_update_freq=100):
         """
         Initializes the DDQN agent.
         """
@@ -50,8 +50,8 @@ class DDQNAgent(BaseAgent):
             states_batch, actions_batch, rewards_batch, next_states_batch, dones_batch = self.replay_buffer.sample(self.batch_size)
 
             # Stack frames and transpose (H, W, C) -> (C, H, W)
-            states_batch = np.stack([np.concatenate(s, axis=-1).transpose(2, 0, 1) for s in states_batch])
-            next_states_batch = np.stack([np.concatenate(ns, axis=-1).transpose(2, 0, 1) for ns in next_states_batch])
+            states_batch = np.stack(states_batch)  # (batch_size, C, H, W)
+            next_states_batch = np.stack(next_states_batch)  # (batch_size, C, H, W)
 
 
             # Convert to tensors
@@ -93,9 +93,7 @@ class DDQNAgent(BaseAgent):
         if isinstance(states, torch.Tensor):
             s = states
         else:
-            state = np.concatenate(states, axis=-1)  # (H, W, stacked_channels)
-            state = state.transpose(2, 0, 1)
-            s = torch.Tensor(state.copy())[None, :].to(self.device)
+            s = torch.Tensor(states.copy())[None, :].to(self.device)
 
         batch_size = s.shape[0]
         ep = 0.0 if greedy else self.ep

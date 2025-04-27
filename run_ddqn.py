@@ -10,15 +10,33 @@ from train_utils import train_dqn_agent
 import argparse
 import warnings
 
-num_frames = 12
+num_frames = 4
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+import gym
+
+class FrameSkipEnv(gym.Wrapper):
+    def __init__(self, env, skip=4):
+        super().__init__(env)
+        self._skip = skip
+
+    def step(self, action):
+        total_reward = 0.0
+        done = False
+        for _ in range(self._skip):
+            obs, reward, done, info = self.env.step(action)
+            total_reward += reward
+            if done:
+                break
+        return obs, total_reward, done, info
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train DQN agents on Super Mario Bros")
     parser.add_argument("--use_custom_reward", action="store_true")
     parser.add_argument(
-        "--num_train_steps", type=int, default=100_000, help="Number of training steps"
+        "--num_train_steps", type=int, default=200_000, help="Number of training steps"
     )
     parser.add_argument("--max_train_episode_steps", type=int, default=5000)
     parser.add_argument("--save_every", type=int, default=10_000, help="Save checkpoint frequency")
@@ -102,6 +120,7 @@ if __name__ == "__main__":
 
     env = gym_super_mario_bros.make("SuperMarioBros-v0")
     env = JoypadSpace(env, SIMPLE_MOVEMENT)
+    env = FrameSkipEnv(env, skip=4)
     num_actions = env.action_space.n
 
     q_params = {

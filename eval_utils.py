@@ -12,6 +12,15 @@ from rl_utils import compute_reward
 
 from moviepy import VideoFileClip, concatenate_videoclips
 
+from frame_processor import FrameProcessor
+
+frame_processor = FrameProcessor(
+    frame_height=240,
+    frame_width=256,
+    stack_size=4,
+    grayscale=True,
+    resize=False
+)
 
 def stitch_videos(video_dir, eval_episode):
     """
@@ -46,8 +55,8 @@ def eval_agent(
     render: bool,
     curr_train_step: int,
     video_dir: str = "eval_vids/",
-    stuck_threshold: int = 200,
-    progress_threshold: int = 5,
+    stuck_threshold: int = 1000,
+    progress_threshold: int = 3,
 ) -> T.Dict[str, T.Any]:
     env = gym_super_mario_bros.make("SuperMarioBros-v0")
     env = JoypadSpace(env, SIMPLE_MOVEMENT)
@@ -72,18 +81,68 @@ def eval_agent(
         stuck_counter = 0
 
         state = env.reset()
-        state_stack = [np.zeros_like(state) for _ in range(frame_stack_size)]
-        while not done and episode_length < max_eval_steps_per_episode:
-            state_stack = state_stack[1:]
-            state_stack.append(state)
-            action = agent.act(state_stack)
-            state, reward, done, info = env.step(action)
+        state_stack = frame_processor.reset(state)
 
-            episode_reward += compute_reward(reward, info, prev_info)
+        while not done and episode_length < max_eval_steps_per_episode:
+            action = agent.act(state_stack)
+
+            JUMP_ACTIONS = {2, 4, 5}
+
+            hold_jump_frames = 3  # hold jump for 3 frames
+            total_reward = 0.0
+            final_info = None
+
+            if action in JUMP_ACTIONS:
+                for _ in range(hold_jump_frames):
+                    next_state, reward, done, info = env.step(action)
+                    total_reward += reward
+                    final_info = info
+                    if done:
+                        break
+            else:
+                next_state, reward, done, info = env.step(action)
+                total_reward = reward
+                final_info = info
+            
+            # --- Strong Reward Shaping ---
+        if prev_info is not None and final_info is not None:
+            x_diff = final_info["x_pos"] - prev_info["x_pos"]
+            time_diff = final_info["time"] - prev_info["time"]
+
+            # Bonus for good forward jump
+            if action in {2, 4, 5}:  # Jump actions
+                if x_diff > 5:
+                    total_reward += 10.0  # Small forward leap
+                if x_diff > 15:
+                    total_reward += 20.0  # Bigger forward jump
+                if x_diff > 30:
+                    total_reward += 30.0  # Huge success jump
+
+            # Bonus for surviving after jump
+            if time_diff > 10:
+                total_reward += 5.0  # Lived longer
+
+            # Bonus for crossing key distance markers
+            if prev_info["x_pos"] <= 200 < final_info["x_pos"]:
+                total_reward += 20.0
+            if prev_info["x_pos"] <= 400 < final_info["x_pos"]:
+                total_reward += 40.0
+            if prev_info["x_pos"] <= 600 < final_info["x_pos"]:
+                total_reward += 60.0
+
+
+
+            next_state_stack = frame_processor.step(next_state)
+
+            episode_reward += compute_reward(total_reward, final_info, prev_info)
             episode_length += 1
 
+            # Bookkeeping
+            state_stack = next_state_stack
+            prev_info = final_info
+
             # Stuck check
-            x_pos = info.get("x_pos", None)
+            x_pos = final_info.get("x_pos", None)
             # print("Current Position: ", x_pos)
             if x_pos is not None:
                 if last_x_pos is None:

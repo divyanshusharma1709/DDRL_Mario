@@ -146,7 +146,11 @@ def train_dqn_agent(
             agent.save(checkpoint_dir, step, eval_metrics)
 
         pbar.set_postfix(
-            ep_reward=episode_reward, time=info["time"], ep=agent.ep_sched.get_epsilon(step)
+            ep_idx=episode_idx,
+            ep_rew=episode_reward,
+            ep_maxx=episode_max_x_pos,
+            time=info["time"],
+            ep=agent.ep_sched.get_epsilon(step),
         )
 
         if render:

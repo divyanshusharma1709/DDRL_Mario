@@ -88,6 +88,9 @@ def train_dqn_agent(
     episode_reward = 0.0
     episode_max_x_pos = 0.0
 
+    stuck_counter = 0
+    max_stuck_iters = 250
+
     prev_info = None
     done = True
     pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
@@ -157,16 +160,25 @@ def train_dqn_agent(
         if step > 0 and step % save_every == 0:
             agent.save(checkpoint_dir, step, eval_metrics)
 
+        if render:
+            env.render()
+
+        if prev_info and info["x_pos"] <= prev_info["x_pos"]:
+            stuck_counter += 1
+        else:
+            stuck_counter = 0
+
+        if stuck_counter >= max_stuck_iters:
+            done = True
+
         pbar.set_postfix(
             ep_idx=episode_idx,
             ep_rew=episode_reward,
             ep_maxx=episode_max_x_pos,
             time=info["time"],
             ep=agent.ep_sched.get_epsilon(step),
+            stuck_cnt=f"{stuck_counter}/{max_stuck_iters}",
         )
-
-        if render:
-            env.render()
 
         episode_train_reward += new_reward
         episode_train_loss += step_loss

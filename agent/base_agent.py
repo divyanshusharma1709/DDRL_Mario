@@ -109,5 +109,5 @@ class BaseAgent(abc.ABC):
         raise NotImplementedError("subclass must implement")
 
     @abc.abstractmethod
-    def eval(self) -> "BaseAgent":
+    def eval(self):
         raise NotImplementedError("subclass must implement")

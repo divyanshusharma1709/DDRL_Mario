@@ -17,7 +17,7 @@ class MemoryBank:
         self.bank = {i: {} for i in range(num_actions)}
         self.device = device
         np.random.seed(1)
-        self.proj = np.random.randn(state_latent_dim, 240 * 256 * 3 * stack_size)
+        self.proj = np.random.randn(state_latent_dim, 84 * 84 * stack_size)
         self.num_actions = num_actions
 
     def _hash_state(self, state: np_typing.NDArray) -> str:
@@ -88,6 +88,7 @@ class EMDQNAgent(BasicQAgent):
 
         self.memory_hits = 0
         self.memory_update_freq = memory_update_freq
+        self.num_steps_between_target_updates = num_steps_between_target_updates
 
     def reset_episode_memory(self):
         self.episode_states = []
@@ -97,16 +98,16 @@ class EMDQNAgent(BasicQAgent):
     def learn_one_step(
         self,
         step: int,
-        states: T.List[np_typing.NDArray],
+        state: np_typing.NDArray,
         action: int,
         reward: float,
-        next_states: T.List[np_typing.NDArray],
+        next_state: np_typing.NDArray,
         done: bool,
     ) -> float:
         self.train()
 
-        state_tensor, action_tensor, reward_tensor, next_state_tensor = self.tensorize_inputs(
-            states, action, reward, next_states
+        state_tensor, action_tensor, reward_tensor, next_state_tensor = self.tensorize(
+            state, action, reward, next_state
         )
 
         predicted_reward = self.q(state_tensor, action_tensor)
@@ -118,7 +119,7 @@ class EMDQNAgent(BasicQAgent):
         )
         target = (
             reward_tensor.view(-1, 1)
-            + self.gamma * self.q(next_state_tensor, greedy_action).detach()
+            + self.gamma * self.q_target(next_state_tensor, greedy_action).detach()
         )
         q_loss = F.mse_loss(predicted_reward, target)
 
@@ -147,5 +148,8 @@ class EMDQNAgent(BasicQAgent):
                 self.episode_states, self.episode_actions, self.episode_rewards, self.gamma
             )
             self.reset_episode_memory()
+
+        if step % self.num_steps_between_target_updates == 0:
+            self.q_target.load_state_dict(self.q.state_dict())
 
         return combined_loss.item()

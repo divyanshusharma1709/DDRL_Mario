@@ -3,12 +3,9 @@ import numpy as np
 import tqdm
 import os
 
-from nes_py.wrappers import JoypadSpace
-import gym_super_mario_bros
-from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
-from gym.wrappers import RecordEpisodeStatistics, RecordVideo
 from agent.base_agent import BaseAgent
 from rl_utils import compute_reward
+from env_utils import create_env
 
 from moviepy import VideoFileClip, concatenate_videoclips
 
@@ -42,19 +39,15 @@ def eval_agent(
     agent: BaseAgent,
     num_episodes: int,
     max_eval_steps_per_episode: int,
-    frame_stack_size: int,
     render: bool,
     curr_train_step: int,
+    frame_stack_size: int,
     video_dir: str = "eval_vids/",
     stuck_threshold: int = 200,
     progress_threshold: int = 5,
+    use_custom_reward: bool = False,
 ) -> T.Dict[str, T.Any]:
-    env = gym_super_mario_bros.make("SuperMarioBros-v0")
-    env = JoypadSpace(env, SIMPLE_MOVEMENT)
-    env = RecordEpisodeStatistics(env)
-    env = RecordVideo(
-        env, video_folder=video_dir, episode_trigger=lambda episode_id: True, name_prefix="eval"
-    )
+    env = create_env(stack_size=frame_stack_size, video_dir=video_dir)
 
     agent.eval()
 
@@ -72,14 +65,14 @@ def eval_agent(
         stuck_counter = 0
 
         state = env.reset()
-        state_stack = [np.zeros_like(state) for _ in range(frame_stack_size)]
         while not done and episode_length < max_eval_steps_per_episode:
-            state_stack = state_stack[1:]
-            state_stack.append(state)
-            action = agent.act(state_stack)
+            action = agent.act(curr_train_step, state, greedy=True)
             state, reward, done, info = env.step(action)
 
-            episode_reward += compute_reward(reward, info, prev_info)
+            if use_custom_reward:
+                episode_reward += compute_reward(reward, info, prev_info)
+            else:
+                episode_reward += reward
             episode_length += 1
 
             # Stuck check

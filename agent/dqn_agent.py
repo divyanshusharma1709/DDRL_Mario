@@ -36,7 +36,6 @@ class Q(nn.Module):
         self,
         backbone_input_shape: T.Tuple[int, int],
         backbone_channels_per_image: int,
-        backbone_frame_stack_size: int,
         backbone_conv_channels: T.List[int],
         backbone_output_dim: int,
         reward_predictor_hidden_layer_dims: T.List[int],
@@ -49,7 +48,6 @@ class Q(nn.Module):
         self.state_backbone = ConvNetBackbone(
             backbone_input_shape,
             backbone_channels_per_image,
-            backbone_frame_stack_size,
             backbone_conv_channels,
             backbone_output_dim,
         )
@@ -103,16 +101,17 @@ class BasicQAgent(BaseAgent):
     def learn_one_step(
         self,
         step: int,
-        states: T.List[np_typing.NDArray],
+        state: np_typing.NDArray,
         action: int,
         reward: float,
-        next_states: T.List[np_typing.NDArray],
+        next_state: np_typing.NDArray,
         done: bool,
+        update_target_network: bool = True,
     ) -> float:
         self.train()
 
         state_tensor, action_tensor, reward_tensor, next_state_tensor = self.tensorize(
-            states, action, reward, next_states
+            state, action, reward, next_state
         )
 
         predicted_reward = self.q(state_tensor, action_tensor)
@@ -122,17 +121,19 @@ class BasicQAgent(BaseAgent):
             greedy=True,
             return_tensor=True,
         )
-        target = (
-            reward_tensor.view(-1, 1)
-            + self.gamma * self.q_target(next_state_tensor, greedy_action).detach()
+        bootstrapped_future_reward = (
+            self.gamma * self.q_target(next_state_tensor, greedy_action).detach()
+            if not done
+            else 0.0
         )
+        target = reward_tensor.view(-1, 1) + bootstrapped_future_reward
         loss = F.mse_loss(predicted_reward, target)
 
         self.optim.zero_grad()
         loss.backward()
         self.optim.step()
 
-        if step % self.target_network_update_steps == 0:
+        if update_target_network and step % self.target_network_update_steps == 0:
             self.q_target.load_state_dict(self.q.state_dict())
 
         return loss.item()
@@ -140,14 +141,13 @@ class BasicQAgent(BaseAgent):
     def act(
         self,
         step: int,
-        states: T.Union[torch.Tensor, T.List[np_typing.NDArray]],
+        state: T.Union[torch.Tensor, np_typing.NDArray],
         greedy: bool = False,
         return_tensor: bool = False,
     ) -> T.Union[np_typing.NDArray, torch.Tensor, int]:
-        if isinstance(states, torch.Tensor):
-            s = states
+        if isinstance(state, torch.Tensor):
+            s = state
         else:
-            state = np.concatenate(states, axis=-1)
             s = torch.Tensor(state.copy())[None, :].to(self.device)
 
         batch_size = s.shape[0]

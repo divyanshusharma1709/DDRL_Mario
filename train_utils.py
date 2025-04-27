@@ -1,7 +1,5 @@
+import random
 import collections
-import json
-import os
-import numpy as np
 import pandas as pd
 import typing as T
 import tqdm
@@ -9,8 +7,6 @@ from gym import Env
 from agent.base_agent import BaseAgent
 from eval_utils import eval_agent
 from rl_utils import compute_reward
-from IPython import get_ipython
-from tqdm.notebook import tqdm as tqdm_notebook
 
 
 DEFAULT_PARAM_DICT = dict(
@@ -71,6 +67,8 @@ def train_dqn_agent(
     eval_metrics = collections.defaultdict(list)
     train_metrics = collections.defaultdict(list)
 
+    replay_buffer = collections.deque(maxlen=1_000_000)
+
     episode_train_loss = 0.0
     episode_train_reward = 0.0
     episode_idx = 0
@@ -79,7 +77,6 @@ def train_dqn_agent(
     episode_max_x_pos = 0.0
 
     prev_info = None
-    state_stack = None
     done = True
     pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
     for step in pbar:
@@ -108,16 +105,14 @@ def train_dqn_agent(
             episode_max_x_pos = 0.0
 
             state = env.reset()
-            state_stack = [np.zeros_like(state) for _ in range(frame_stack_size)]
             prev_info = None
 
-        state_stack = state_stack[1:]
-        state_stack.append(state)
+        state = state.__array__()
 
-        action = agent.act(step, state_stack)
+        action = agent.act(step, state)
         next_state, reward, done, info = env.step(action)
 
-        state_stack.append(next_state)
+        next_state = next_state.__array__()
 
         if use_custom_reward:
             new_reward = compute_reward(reward, info, prev_info)
@@ -125,10 +120,15 @@ def train_dqn_agent(
             new_reward = reward
         episode_reward += new_reward
 
-        step_loss = agent.learn_one_step(
-            step, state_stack[:-1], action, reward, state_stack[1:], done
-        )
-        state_stack = state_stack[1:]
+        step_loss = agent.learn_one_step(step, state, action, reward, next_state, done)
+        # False is to avoid updating target network during replay
+        replay_buffer.append((step, state, action, reward, next_state, done, False))
+
+        if step > 0 and step % 10_000 == 0:
+            sample_size = min(50_000, len(replay_buffer))
+            sample = random.sample(replay_buffer, k=sample_size)
+            for i in tqdm.tqdm(range(sample_size), desc="Exp. replay"):
+                agent.learn_one_step(*sample[i])
 
         if do_eval and step % eval_every == 0 and step != 0 and eval_every > 0:
             eval_results_dict = eval_agent(
@@ -136,8 +136,9 @@ def train_dqn_agent(
                 num_episodes=num_eval_episodes,
                 max_eval_steps_per_episode=max_eval_steps_per_episode,
                 render=render,
-                frame_stack_size=frame_stack_size,
                 curr_train_step=step,
+                use_custom_reward=use_custom_reward,
+                frame_stack_size=frame_stack_size,
             )
             add_eval_metrics(eval_metrics, eval_results_dict)
 

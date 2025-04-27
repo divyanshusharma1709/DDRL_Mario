@@ -43,19 +43,15 @@ class BaseAgent(abc.ABC):
 
     def tensorize(
         self,
-        states: T.List[np_typing.NDArray],
+        state: np_typing.NDArray,
         action: int,
         reward: float,
-        next_states: T.List[np_typing.NDArray],
+        next_state: np_typing.NDArray,
     ) -> T.Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        state = np.concatenate(states, axis=-1)
-        next_state = np.concatenate(next_states, axis=-1)
-
         state_tensor = torch.Tensor(state[np.newaxis, ...].copy()).to(self.device)
         next_state_tensor = torch.Tensor(next_state[np.newaxis, ...].copy()).to(self.device)
         action_tensor = torch.Tensor([[action]]).int().to(self.device)
         reward_tensor = torch.Tensor([[reward]]).to(self.device)
-
         return state_tensor, action_tensor, reward_tensor, next_state_tensor
 
     @abc.abstractmethod
@@ -67,6 +63,7 @@ class BaseAgent(abc.ABC):
         reward: float,
         next_states: T.List[np_typing.NDArray],
         done: bool,
+        update_target_network: bool = True,
     ) -> float:
         raise NotImplementedError("subclass must implement")
 

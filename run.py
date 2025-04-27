@@ -1,11 +1,9 @@
 import os
 import json
-from nes_py.wrappers import JoypadSpace
-import gym_super_mario_bros
-from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from agent.dqn_agent import BasicQAgent
 from agent.emdqn_agent import EMDQNAgent
 from train_utils import train_dqn_agent
+from env_utils import create_env
 import argparse
 
 
@@ -60,10 +58,10 @@ def parse_args():
         "--backbone_input_shape",
         type=int,
         nargs=2,
-        default=[240, 256],
+        default=[84, 84],
         help="Input shape for backbone network",
     )
-    parser.add_argument("--backbone_channels", type=int, default=3, help="Channels per image")
+    parser.add_argument("--backbone_channels", type=int, default=1, help="Channels per image")
     parser.add_argument(
         "--backbone_conv_channels",
         type=int,
@@ -111,15 +109,13 @@ if __name__ == "__main__":
     # Save arguments to JSON file in the checkpoint directory
     save_args_to_json(args, args.checkpoint_dir)
 
-    env = gym_super_mario_bros.make("SuperMarioBros-v0")
-    env = JoypadSpace(env, SIMPLE_MOVEMENT)
+    env = create_env(args.frame_stack_size, env_version="v3")
 
     num_actions = env.action_space.n
 
     q_params = {
         "backbone_input_shape": tuple(args.backbone_input_shape),
-        "backbone_channels_per_image": args.backbone_channels,
-        "backbone_frame_stack_size": args.frame_stack_size,
+        "backbone_channels_per_image": args.frame_stack_size,
         "backbone_conv_channels": args.backbone_conv_channels,
         "backbone_output_dim": args.backbone_output_dim,
         "action_emb_table_size": num_actions,

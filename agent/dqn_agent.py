@@ -75,17 +75,21 @@ class BasicQAgent(BaseAgent):
     def __init__(
         self,
         num_actions: int,
-        q_params: T.Mapping[str, T.Any],
+        q_params: T.Dict[str, T.Any],
+        ep_sched_params: T.Dict[str, T.Any],
         lr: float = 1e-4,
         gamma: float = 0.95,
-        ep: float = 0.05,
+        num_steps_between_target_updates: int = 1,
     ):
-        super().__init__(ep)
+        super().__init__(ep_sched_params)
 
         self.gamma = gamma
         self.q = Q(device=self.device, **q_params)
+        self.q_target = Q(device=self.device, **q_params)
+        self.q_target.load_state_dict(self.q.state_dict())
         self.optim = torch.optim.AdamW(self.q.parameters(), lr=lr)
         self.num_actions = num_actions
+        self.target_network_update_steps = num_steps_between_target_updates
 
     def a2t(self, action: int, batch_size: int) -> torch.Tensor:
         return torch.Tensor([action])[None, :].int().repeat(batch_size, 1).to(self.device)
@@ -98,31 +102,29 @@ class BasicQAgent(BaseAgent):
 
     def learn_one_step(
         self,
-        states: np_typing.NDArray,
+        step: int,
+        states: T.List[np_typing.NDArray],
         action: int,
         reward: float,
-        next_states: np_typing.NDArray,
+        next_states: T.List[np_typing.NDArray],
         done: bool,
     ) -> float:
         self.train()
 
-        state = np.concatenate(states, axis=-1)
-        next_state = np.concatenate(next_states, axis=-1)
-
-        state_tensor = torch.Tensor(state[np.newaxis, ...].copy()).to(self.device)
-        next_state_tensor = torch.Tensor(next_state[np.newaxis, ...].copy()).to(self.device)
-        action_tensor = torch.Tensor([[action]]).int().to(self.device)
-        reward_tensor = torch.Tensor([[reward]]).to(self.device)
+        state_tensor, action_tensor, reward_tensor, next_state_tensor = self.tensorize(
+            states, action, reward, next_states
+        )
 
         predicted_reward = self.q(state_tensor, action_tensor)
         greedy_action = self.act(
+            step,
             next_state_tensor,
             greedy=True,
             return_tensor=True,
         )
         target = (
             reward_tensor.view(-1, 1)
-            + self.gamma * self.q(next_state_tensor, greedy_action).detach()
+            + self.gamma * self.q_target(next_state_tensor, greedy_action).detach()
         )
         loss = F.mse_loss(predicted_reward, target)
 
@@ -130,10 +132,14 @@ class BasicQAgent(BaseAgent):
         loss.backward()
         self.optim.step()
 
+        if step % self.target_network_update_steps == 0:
+            self.q_target.load_state_dict(self.q.state_dict())
+
         return loss.item()
 
     def act(
         self,
+        step: int,
         states: T.Union[torch.Tensor, T.List[np_typing.NDArray]],
         greedy: bool = False,
         return_tensor: bool = False,
@@ -146,7 +152,7 @@ class BasicQAgent(BaseAgent):
 
         batch_size = s.shape[0]
 
-        ep = 0.0 if greedy else self.ep
+        ep = 0.0 if greedy else self.ep_sched.get_epsilon(step)
         if random.random() < 1 - ep:
             # compute the Q values for each action from the input state
             action_rewards = [

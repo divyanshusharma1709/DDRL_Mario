@@ -114,7 +114,7 @@ def train_dqn_agent(
         state_stack = state_stack[1:]
         state_stack.append(state)
 
-        action = agent.act(state_stack)
+        action = agent.act(step, state_stack)
         next_state, reward, done, info = env.step(action)
 
         state_stack.append(next_state)
@@ -125,7 +125,9 @@ def train_dqn_agent(
             new_reward = reward
         episode_reward += new_reward
 
-        step_loss = agent.learn_one_step(state_stack[:-1], action, reward, state_stack[1:], done)
+        step_loss = agent.learn_one_step(
+            step, state_stack[:-1], action, reward, state_stack[1:], done
+        )
         state_stack = state_stack[1:]
 
         if do_eval and step % eval_every == 0 and step != 0 and eval_every > 0:
@@ -142,7 +144,9 @@ def train_dqn_agent(
         if step > 0 and step % save_every == 0:
             agent.save(checkpoint_dir, step, eval_metrics)
 
-        pbar.set_postfix(ep_reward=episode_reward, time=info["time"])
+        pbar.set_postfix(
+            ep_reward=episode_reward, time=info["time"], ep=agent.ep_sched.get_epsilon(step)
+        )
 
         if render:
             env.render()

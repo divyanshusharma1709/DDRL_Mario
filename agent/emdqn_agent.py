@@ -60,15 +60,22 @@ class EMDQNAgent(BasicQAgent):
         self,
         num_actions: int,
         q_params: T.Dict[str, T.Any],
+        ep_sched_params: T.Dict[str, T.Any],
         lr: float,
         gamma: float,
-        ep: float,
         alpha_q: float = 1.0,
         alpha_mem: float = 1.0,
         memory_update_freq: int = 500,
         stack_size: int = 4,
+        num_steps_between_target_updates: int = 1,
     ):
-        super().__init__(num_actions=num_actions, q_params=q_params, lr=lr, ep=ep, gamma=gamma)
+        super().__init__(
+            num_actions=num_actions,
+            ep_sched_params=ep_sched_params,
+            q_params=q_params,
+            lr=lr,
+            gamma=gamma,
+        )
         self.bank = MemoryBank(
             num_actions=num_actions,
             state_latent_dim=4,
@@ -89,24 +96,22 @@ class EMDQNAgent(BasicQAgent):
 
     def learn_one_step(
         self,
+        step: int,
         states: T.List[np_typing.NDArray],
         action: int,
         reward: float,
-        next_states: np_typing.NDArray,
+        next_states: T.List[np_typing.NDArray],
         done: bool,
     ) -> float:
         self.train()
 
-        state = np.concatenate(states, axis=-1)
-        next_state = np.concatenate(next_states, axis=-1)
-
-        state_tensor = torch.Tensor(state[np.newaxis, ...].copy()).to(self.device)
-        next_state_tensor = torch.Tensor(next_state[np.newaxis, ...].copy()).to(self.device)
-        action_tensor = torch.Tensor([[action]]).int().to(self.device)
-        reward_tensor = torch.Tensor([[reward]]).to(self.device)
+        state_tensor, action_tensor, reward_tensor, next_state_tensor = self.tensorize_inputs(
+            states, action, reward, next_states
+        )
 
         predicted_reward = self.q(state_tensor, action_tensor)
         greedy_action = self.act(
+            step,
             next_state_tensor,
             greedy=True,
             return_tensor=True,

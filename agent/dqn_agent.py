@@ -3,12 +3,14 @@ import json
 import os
 import random
 import typing as T
+import tqdm
 
 import numpy.typing as np_typing
 import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.utils.data.dataloader import DataLoader
 
 from agent.base_agent import BaseAgent
 from agent.backbone import ConvNetBackbone
@@ -114,20 +116,9 @@ class BasicQAgent(BaseAgent):
             state, action, reward, next_state
         )
 
-        predicted_reward = self.q(state_tensor, action_tensor)
-        greedy_action = self.act(
-            step,
-            next_state_tensor,
-            greedy=True,
-            return_tensor=True,
+        loss = self.compute_loss(
+            step, state_tensor, action_tensor, reward_tensor, next_state_tensor
         )
-        bootstrapped_future_reward = (
-            self.gamma * self.q_target(next_state_tensor, greedy_action).detach()
-            if not done
-            else 0.0
-        )
-        target = reward_tensor.view(-1, 1) + bootstrapped_future_reward
-        loss = F.mse_loss(predicted_reward, target)
 
         self.optim.zero_grad()
         loss.backward()
@@ -137,6 +128,44 @@ class BasicQAgent(BaseAgent):
             self.q_target.load_state_dict(self.q.state_dict())
 
         return loss.item()
+
+    def compute_loss(
+        self,
+        step: int,
+        state_tensor: torch.Tensor,
+        action_tensor: torch.Tensor,
+        reward_tensor: torch.Tensor,
+        next_state_tensor: torch.Tensor,
+    ) -> torch.Tensor:
+        predicted_reward = self.q(state_tensor, action_tensor)
+        greedy_action = self.act(
+            step,
+            next_state_tensor,
+            greedy=True,
+            return_tensor=True,
+        )
+        bootstrapped_future_reward = (
+            self.gamma * self.q_target(next_state_tensor, greedy_action).detach()
+        )
+        target = reward_tensor.view(-1, 1) + bootstrapped_future_reward
+        loss = F.mse_loss(predicted_reward, target)
+        return loss
+
+    def learn_batch(self, step: int, dataloader: DataLoader) -> float:
+        total_loss = 0.0
+        for batch in tqdm.tqdm(dataloader, total=len(dataloader)):
+            state, action, reward, next_state = (
+                batch["state"].to(dtype=torch.float32).to(self.device),
+                batch["action"].to(self.device),
+                batch["reward"].to(dtype=torch.float32).to(self.device),
+                batch["next_state"].to(dtype=torch.float32).to(self.device),
+            )
+            loss = self.compute_loss(step, state, action, reward, next_state)
+            self.optim.zero_grad()
+            loss.backward()
+            self.optim.step()
+            total_loss += loss.item()
+        return total_loss / len(dataloader)
 
     def act(
         self,

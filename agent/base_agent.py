@@ -4,6 +4,7 @@ import typing as T
 import numpy as np
 import numpy.typing as np_typing
 import torch
+from torch.utils.data.dataloader import DataLoader
 
 
 class LinearEpsilonDecayScheduler:
@@ -55,6 +56,17 @@ class BaseAgent(abc.ABC):
         return state_tensor, action_tensor, reward_tensor, next_state_tensor
 
     @abc.abstractmethod
+    def compute_loss(
+        self,
+        step: int,
+        state_tensor: torch.Tensor,
+        action_tensor: torch.Tensor,
+        reward_tensor: torch.Tensor,
+        next_state_tensor: torch.Tensor,
+    ) -> torch.Tensor:
+        raise NotImplementedError("subclass must implement")
+
+    @abc.abstractmethod
     def learn_one_step(
         self,
         step: int,
@@ -65,6 +77,10 @@ class BaseAgent(abc.ABC):
         done: bool,
         update_target_network: bool = True,
     ) -> float:
+        raise NotImplementedError("subclass must implement")
+
+    @abc.abstractmethod
+    def learn_batch(self, step: int, dataloader: DataLoader) -> float:
         raise NotImplementedError("subclass must implement")
 
     @abc.abstractmethod

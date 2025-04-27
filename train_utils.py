@@ -6,7 +6,7 @@ import tqdm
 from gym import Env
 from agent.base_agent import BaseAgent
 from eval_utils import eval_agent
-from rl_utils import compute_reward
+from rl_utils import compute_reward, ReplayBuffer
 
 
 DEFAULT_PARAM_DICT = dict(
@@ -22,6 +22,9 @@ DEFAULT_PARAM_DICT = dict(
     render=False,
     frame_stack_size=4,
     max_train_episode_steps=5000,
+    replay_buffer_batch_size=64,
+    agent_update_frequency=5000,
+    replay_buffer_sample_size=50000,
 )
 
 
@@ -63,11 +66,20 @@ def train_dqn_agent(
     max_episode_steps = params.get(
         "max_train_episode_steps", DEFAULT_PARAM_DICT["max_train_episode_steps"]
     )
+    batch_size = params.get(
+        "replay_buffer_batch_size", DEFAULT_PARAM_DICT["replay_buffer_batch_size"]
+    )
+    agent_update_frequency = params.get(
+        "agent_update_frequency", DEFAULT_PARAM_DICT["agent_update_frequency"]
+    )
+    replay_buffer_sample_size = params.get(
+        "replay_buffer_sample_size", DEFAULT_PARAM_DICT["replay_buffer_sample_size"]
+    )
 
     eval_metrics = collections.defaultdict(list)
     train_metrics = collections.defaultdict(list)
 
-    replay_buffer = collections.deque(maxlen=1_000_000)
+    replay_buffer = ReplayBuffer(max_size=100000, batch_size=batch_size)
 
     episode_train_loss = 0.0
     episode_train_reward = 0.0
@@ -120,15 +132,19 @@ def train_dqn_agent(
             new_reward = reward
         episode_reward += new_reward
 
-        step_loss = agent.learn_one_step(step, state, action, reward, next_state, done)
-        # False is to avoid updating target network during replay
-        replay_buffer.append((step, state, action, reward, next_state, done, False))
+        # step_loss = agent.learn_one_step(step, state, action, reward, next_state, done)
 
-        if step > 0 and step % 10_000 == 0:
-            sample_size = min(50_000, len(replay_buffer))
-            sample = random.sample(replay_buffer, k=sample_size)
-            for i in tqdm.tqdm(range(sample_size), desc="Exp. replay"):
-                agent.learn_one_step(*sample[i])
+        step_loss = agent.compute_loss(
+            step, *agent.tensorize(state, action, reward, next_state)
+        ).item()
+
+        # False is to avoid updating target network during replay
+        replay_buffer.store(state, action, reward, next_state)
+
+        if step > 0 and step % agent_update_frequency == 0:
+            sample_size = min(replay_buffer_sample_size, len(replay_buffer))
+            sample = replay_buffer.sample(n=sample_size)
+            agent.learn_batch(step, sample)
 
         if do_eval and step % eval_every == 0 and step != 0 and eval_every > 0:
             eval_results_dict = eval_agent(

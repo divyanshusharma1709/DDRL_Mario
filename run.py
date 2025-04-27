@@ -66,7 +66,7 @@ def parse_args():
         "--backbone_conv_channels",
         type=int,
         nargs="+",
-        default=[64, 128, 256, 512],
+        default=[32, 64, 64],
         help="Conv channels for backbone",
     )
     parser.add_argument(
@@ -77,9 +77,12 @@ def parse_args():
         "--reward_predictor_dims",
         type=int,
         nargs="+",
-        default=[256, 128, 64, 32],
+        default=[512],
         help="Reward predictor hidden layers",
     )
+    parser.add_argument("--replay_buffer_batch_size", type=int, default=1024)
+    parser.add_argument("--agent_update_frequency", type=int, default=5000)
+    parser.add_argument("--replay_buffer_sample_size", type=int, default=50000)
 
     return parser.parse_args()
 
@@ -109,7 +112,7 @@ if __name__ == "__main__":
     # Save arguments to JSON file in the checkpoint directory
     save_args_to_json(args, args.checkpoint_dir)
 
-    env = create_env(args.frame_stack_size, env_version="v3")
+    env = create_env(args.frame_stack_size, env_version="v0")
 
     num_actions = env.action_space.n
 
@@ -134,6 +137,9 @@ if __name__ == "__main__":
         "frame_stack_size": args.frame_stack_size,
         "use_custom_reward": args.use_custom_reward,
         "max_train_episode_steps": args.max_train_episode_steps,
+        "replay_buffer_batch_size": args.replay_buffer_batch_size,
+        "replay_buffer_sample_size": args.replay_buffer_sample_size,
+        "agent_update_frequency": args.agent_update_frequency,
     }
 
     ep_sched_params = {

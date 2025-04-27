@@ -1,16 +1,12 @@
+import random
 import collections
-import json
-import os
-import numpy as np
 import pandas as pd
 import typing as T
 import tqdm
 from gym import Env
 from agent.base_agent import BaseAgent
 from eval_utils import eval_agent
-from rl_utils import compute_reward
-from IPython import get_ipython
-from tqdm.notebook import tqdm as tqdm_notebook
+from rl_utils import compute_reward, ReplayBuffer
 
 
 DEFAULT_PARAM_DICT = dict(
@@ -26,6 +22,9 @@ DEFAULT_PARAM_DICT = dict(
     render=False,
     frame_stack_size=4,
     max_train_episode_steps=5000,
+    replay_buffer_batch_size=64,
+    agent_update_frequency=5000,
+    replay_buffer_sample_size=50000,
 )
 
 
@@ -67,9 +66,20 @@ def train_dqn_agent(
     max_episode_steps = params.get(
         "max_train_episode_steps", DEFAULT_PARAM_DICT["max_train_episode_steps"]
     )
+    batch_size = params.get(
+        "replay_buffer_batch_size", DEFAULT_PARAM_DICT["replay_buffer_batch_size"]
+    )
+    agent_update_frequency = params.get(
+        "agent_update_frequency", DEFAULT_PARAM_DICT["agent_update_frequency"]
+    )
+    replay_buffer_sample_size = params.get(
+        "replay_buffer_sample_size", DEFAULT_PARAM_DICT["replay_buffer_sample_size"]
+    )
 
     eval_metrics = collections.defaultdict(list)
     train_metrics = collections.defaultdict(list)
+
+    replay_buffer = ReplayBuffer(max_size=100000, batch_size=batch_size)
 
     episode_train_loss = 0.0
     episode_train_reward = 0.0
@@ -78,8 +88,10 @@ def train_dqn_agent(
     episode_reward = 0.0
     episode_max_x_pos = 0.0
 
+    stuck_counter = 0
+    max_stuck_iters = 250
+
     prev_info = None
-    state_stack = None
     done = True
     pbar = tqdm.tqdm(range(num_train_steps), desc="Gathering")
     for step in pbar:
@@ -108,38 +120,30 @@ def train_dqn_agent(
             episode_max_x_pos = 0.0
 
             state = env.reset()
-            state_stack = [np.zeros_like(state) for _ in range(frame_stack_size)]
             prev_info = None
 
-        state_stack = state_stack[1:]
-        state_stack.append(state)
-
-        action = agent.act(state_stack)
-        prev_x_pos = 0
-        stuck_counter = 0
-        stuck_threshold = 50
+        state = state.__array__()
+        action = agent.act(step, state)
         next_state, reward, done, info = env.step(action)
-        curr_x_pos = info.get('x_pos', 0)
-
-        if curr_x_pos <= prev_x_pos:
-            stuck_counter += 1
-        else:
-            stuck_counter = 0
-        
-        prev_x_pos = curr_x_pos
-        if stuck_counter >= stuck_threshold:
-            done = True
-
-        state_stack.append(next_state)
-
+        next_state = next_state.__array__()
         if use_custom_reward:
             new_reward = compute_reward(reward, info, prev_info)
         else:
             new_reward = reward
         episode_reward += new_reward
 
-        step_loss = agent.learn_one_step(state_stack[:-1], action, reward, state_stack[1:], done)
-        state_stack = state_stack[1:]
+        step_loss = agent.compute_loss(
+            step, *agent.tensorize(state, action, new_reward, next_state)
+        ).item()
+
+        replay_buffer.store(state, action, new_reward, next_state)
+
+        if step > 0 and step % agent_update_frequency == 0:
+            sample_size = min(replay_buffer_sample_size, len(replay_buffer))
+            sample = replay_buffer.sample(n=sample_size)
+            agent.learn_batch(step, sample)
+
+        agent.update_state(step, state, action, reward, done)
 
         if do_eval and step % eval_every == 0 and step != 0 and eval_every > 0:
             eval_results_dict = eval_agent(
@@ -147,22 +151,37 @@ def train_dqn_agent(
                 num_episodes=num_eval_episodes,
                 max_eval_steps_per_episode=max_eval_steps_per_episode,
                 render=render,
-                frame_stack_size=frame_stack_size,
                 curr_train_step=step,
+                use_custom_reward=use_custom_reward,
+                frame_stack_size=frame_stack_size,
             )
             add_eval_metrics(eval_metrics, eval_results_dict)
 
         if step > 0 and step % save_every == 0:
             agent.save(checkpoint_dir, step, eval_metrics)
 
-        pbar.set_postfix(ep_reward=episode_reward, time=info["time"])
-
         if render:
             env.render()
 
+        # check if stuck
+        if prev_info and info["x_pos"] <= prev_info["x_pos"]:
+            stuck_counter += 1
+        else:
+            stuck_counter = 0
+        if stuck_counter >= max_stuck_iters:
+            done = True
+
+        pbar.set_postfix(
+            ep_idx=episode_idx,
+            ep_rew=episode_reward,
+            ep_max_x=episode_max_x_pos,
+            time=info["time"],
+            ep=agent.ep_sched.get_epsilon(step),
+            stuck_cnt=f"{stuck_counter}/{max_stuck_iters}",
+        )
+
         episode_train_reward += new_reward
-        if step_loss != None:
-            episode_train_loss += step_loss
+        episode_train_loss += step_loss
         episode_steps += 1
         episode_max_x_pos = max(episode_max_x_pos, info["x_pos"])
         state = next_state.copy()

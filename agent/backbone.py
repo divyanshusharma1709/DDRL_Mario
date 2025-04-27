@@ -11,7 +11,6 @@ class ConvNetBackbone(nn.Module):
         self,
         input_shape: T.Tuple[int, int],
         channels_per_image: int,
-        frame_stack_size: int,
         conv_layer_channels: T.List[int],
         output_dim: int,
         conv_kernel_size: int = 3,
@@ -20,7 +19,7 @@ class ConvNetBackbone(nn.Module):
         super().__init__()
 
         conv_layers, batch_norms = [], []
-        prev_in_channels = channels_per_image * frame_stack_size
+        prev_in_channels = channels_per_image
 
         # Track the spatial dimensions after each conv layer
         height, width = input_shape[:2]
@@ -55,10 +54,7 @@ class ConvNetBackbone(nn.Module):
         )
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
-        # (batch_size, width, height, channels)
-        x = state / 256
-        # (batch_size, channels, width, height)
-        x = x.permute(0, 3, 1, 2).float()
+        x = state  # (batch_size, channels, width, height)
         for conv_layer, batch_norm in zip(self.conv_layers, self.batch_norms):
             x = conv_layer(x)
             x = batch_norm(x)

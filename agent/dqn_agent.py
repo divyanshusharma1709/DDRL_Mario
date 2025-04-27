@@ -3,12 +3,14 @@ import json
 import os
 import random
 import typing as T
+import tqdm
 
 import numpy.typing as np_typing
 import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.utils.data.dataloader import DataLoader
 
 from agent.base_agent import BaseAgent
 from agent.backbone import ConvNetBackbone
@@ -36,7 +38,6 @@ class Q(nn.Module):
         self,
         backbone_input_shape: T.Tuple[int, int],
         backbone_channels_per_image: int,
-        backbone_frame_stack_size: int,
         backbone_conv_channels: T.List[int],
         backbone_output_dim: int,
         reward_predictor_hidden_layer_dims: T.List[int],
@@ -49,7 +50,6 @@ class Q(nn.Module):
         self.state_backbone = ConvNetBackbone(
             backbone_input_shape,
             backbone_channels_per_image,
-            backbone_frame_stack_size,
             backbone_conv_channels,
             backbone_output_dim,
         )
@@ -75,17 +75,26 @@ class BasicQAgent(BaseAgent):
     def __init__(
         self,
         num_actions: int,
-        q_params: T.Mapping[str, T.Any],
+        q_params: T.Dict[str, T.Any],
+        ep_sched_params: T.Dict[str, T.Any],
         lr: float = 1e-4,
         gamma: float = 0.95,
-        ep: float = 0.05,
+        num_steps_between_target_updates: int = 1,
     ):
-        super().__init__(ep)
 
         self.gamma = gamma
-        self.q = Q(device=self.device, **q_params)
-        self.optim = torch.optim.AdamW(self.q.parameters(), lr=lr)
+        self.q = Q(device="cpu", **q_params)
+        self.q_target = Q(device="cpu", **q_params)
+        self.q_target.load_state_dict(self.q.state_dict())
+        optim = torch.optim.AdamW(self.q.parameters(), lr=lr)
+        # overrides device
+        super().__init__(ep_sched_params, optim)
         self.num_actions = num_actions
+        self.num_steps_between_target_updates = num_steps_between_target_updates
+
+        # use device from after super call
+        self.q.to(self.device)
+        self.q_target.to(self.device)
 
     def a2t(self, action: int, batch_size: int) -> torch.Tensor:
         return torch.Tensor([action])[None, :].int().repeat(batch_size, 1).to(self.device)
@@ -96,57 +105,47 @@ class BasicQAgent(BaseAgent):
     def train(self):
         self.q.train()
 
-    def learn_one_step(
+    def compute_loss(
         self,
-        states: np_typing.NDArray,
-        action: int,
-        reward: float,
-        next_states: np_typing.NDArray,
-        done: bool,
-    ) -> float:
-        self.train()
-
-        state = np.concatenate(states, axis=-1)
-        next_state = np.concatenate(next_states, axis=-1)
-
-        state_tensor = torch.Tensor(state[np.newaxis, ...].copy()).to(self.device)
-        next_state_tensor = torch.Tensor(next_state[np.newaxis, ...].copy()).to(self.device)
-        action_tensor = torch.Tensor([[action]]).int().to(self.device)
-        reward_tensor = torch.Tensor([[reward]]).to(self.device)
-
+        step: int,
+        state_tensor: torch.Tensor,
+        action_tensor: torch.Tensor,
+        reward_tensor: torch.Tensor,
+        next_state_tensor: torch.Tensor,
+    ) -> torch.Tensor:
         predicted_reward = self.q(state_tensor, action_tensor)
         greedy_action = self.act(
+            step,
             next_state_tensor,
             greedy=True,
             return_tensor=True,
         )
-        target = (
-            reward_tensor.view(-1, 1)
-            + self.gamma * self.q(next_state_tensor, greedy_action).detach()
+        bootstrapped_future_reward = (
+            self.gamma * self.q_target(next_state_tensor, greedy_action).detach()
         )
+        target = reward_tensor.view(-1, 1) + bootstrapped_future_reward
         loss = F.mse_loss(predicted_reward, target)
+        return loss
 
-        self.optim.zero_grad()
-        loss.backward()
-        self.optim.step()
-
-        return loss.item()
+    def update_state(self, step, state, action, reward, done):
+        if step % self.num_steps_between_target_updates == 0:
+            self.q_target.load_state_dict(self.q.state_dict())
 
     def act(
         self,
-        states: T.Union[torch.Tensor, T.List[np_typing.NDArray]],
+        step: int,
+        state: T.Union[torch.Tensor, np_typing.NDArray],
         greedy: bool = False,
         return_tensor: bool = False,
     ) -> T.Union[np_typing.NDArray, torch.Tensor, int]:
-        if isinstance(states, torch.Tensor):
-            s = states
+        if isinstance(state, torch.Tensor):
+            s = state
         else:
-            state = np.concatenate(states, axis=-1)
             s = torch.Tensor(state.copy())[None, :].to(self.device)
 
         batch_size = s.shape[0]
 
-        ep = 0.0 if greedy else self.ep
+        ep = 0.0 if greedy else self.ep_sched.get_epsilon(step)
         if random.random() < 1 - ep:
             # compute the Q values for each action from the input state
             action_rewards = [

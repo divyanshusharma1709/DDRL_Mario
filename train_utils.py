@@ -133,10 +133,10 @@ def train_dqn_agent(
         episode_reward += new_reward
 
         step_loss = agent.compute_loss(
-            step, *agent.tensorize(state, action, reward, next_state)
+            step, *agent.tensorize(state, action, new_reward, next_state)
         ).item()
 
-        replay_buffer.store(state, action, reward, next_state)
+        replay_buffer.store(state, action, new_reward, next_state)
 
         if step > 0 and step % agent_update_frequency == 0:
             sample_size = min(replay_buffer_sample_size, len(replay_buffer))
@@ -163,18 +163,18 @@ def train_dqn_agent(
         if render:
             env.render()
 
+        # check if stuck
         if prev_info and info["x_pos"] <= prev_info["x_pos"]:
             stuck_counter += 1
         else:
             stuck_counter = 0
-
         if stuck_counter >= max_stuck_iters:
             done = True
 
         pbar.set_postfix(
             ep_idx=episode_idx,
             ep_rew=episode_reward,
-            ep_maxx=episode_max_x_pos,
+            ep_max_x=episode_max_x_pos,
             time=info["time"],
             ep=agent.ep_sched.get_epsilon(step),
             stuck_cnt=f"{stuck_counter}/{max_stuck_iters}",

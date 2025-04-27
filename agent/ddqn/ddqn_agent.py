@@ -4,22 +4,18 @@ import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
+import numpy.typing as np_typing
+import typing as T
 
 from agent.base_agent import BaseAgent
-from agent.q_agent import Q
+from agent.Q_DDQN import Qv2 as Q  # <- Your new clean Q network
+from agent.ddqn.replay import ReplayBuffer
 
 class DDQNAgent(BaseAgent):
     def __init__(self, num_actions, q_params, lr=1e-4, gamma=0.95, ep=0.05, target_update_freq=100):
         """
         Initializes the DDQN agent.
-        
-        Parameters:
-          num_actions (int): Number of available actions.
-          q_params (dict): Parameters for the Q network (backbone input shape, conv channels, etc.).
-          lr (float): Learning rate.
-          gamma (float): Discount factor.
-          ep (float): Epsilon for the epsilon-greedy policy.
-          target_update_freq (int): Frequency (in steps) to update the target network.
         """
         super().__init__(ep)
         self.gamma = gamma
@@ -27,95 +23,91 @@ class DDQNAgent(BaseAgent):
         self.target_update_freq = target_update_freq
         self.update_counter = 0
 
-        # Create the online Q-network and the target Q-network.
-        self.q = Q(**q_params)
-        self.target_q = Q(**q_params)
+        # Replay buffer
+        self.replay_buffer = ReplayBuffer(capacity=100_000)
+        self.batch_size = 32
+        self.start_training_after = 1000
+        self.train_every = 4
+        self.step_counter = 0
+
+        # Networks
+        self.q = Q(**q_params).to(self.device)
+        self.target_q = Q(**q_params).to(self.device)
         self.target_q.load_state_dict(self.q.state_dict())
 
         self.optim = torch.optim.AdamW(self.q.parameters(), lr=lr)
 
-    def a2t(self, action, batch_size):
+    def learn_one_step(self, states, action, reward, next_states, done):
         """
-        Helper function that converts an action (int) into a tensor of shape (batch_size, 1).
+        Stores transition and periodically trains.
         """
-        return (
-            torch.Tensor([action])[None, :]
-            .int()
-            .repeat(batch_size, 1)
-            .to(self.device)
-        )
+        self.replay_buffer.push(states, action, reward, next_states, done)
+        self.step_counter += 1
 
-    def learn_one_step(self, state, action, reward, next_state):
+        loss = None
+
+        if len(self.replay_buffer) > self.start_training_after and self.step_counter % self.train_every == 0:
+            states_batch, actions_batch, rewards_batch, next_states_batch, dones_batch = self.replay_buffer.sample(self.batch_size)
+
+            # Stack frames and transpose (H, W, C) -> (C, H, W)
+            states_batch = np.stack([np.concatenate(s, axis=-1).transpose(2, 0, 1) for s in states_batch])
+            next_states_batch = np.stack([np.concatenate(ns, axis=-1).transpose(2, 0, 1) for ns in next_states_batch])
+
+
+            # Convert to tensors
+            states_batch = torch.tensor(states_batch, dtype=torch.float32, device=self.device)
+            next_states_batch = torch.tensor(next_states_batch, dtype=torch.float32, device=self.device)
+            actions_batch = torch.tensor(actions_batch, dtype=torch.long, device=self.device).unsqueeze(1)
+            rewards_batch = torch.tensor(rewards_batch, dtype=torch.float32, device=self.device).unsqueeze(1)
+            dones_batch = torch.tensor(dones_batch, dtype=torch.float32, device=self.device).unsqueeze(1)
+
+            # Current Q-values
+            q_values = self.q(states_batch).gather(1, actions_batch)
+
+            # Target Q-values (Double DQN)
+            next_actions = self.q(next_states_batch).argmax(1, keepdim=True)
+            next_q_values = self.target_q(next_states_batch).gather(1, next_actions)
+
+            targets = rewards_batch + self.gamma * (1 - dones_batch) * next_q_values
+
+            loss = F.mse_loss(q_values, targets.detach())
+            self.optim.zero_grad()
+            loss.backward()
+            self.optim.step()
+
+            # Update target network
+            if self.step_counter % self.target_update_freq == 0:
+                self.target_q.load_state_dict(self.q.state_dict())
+
+        return loss.item() if loss is not None else None
+
+    def act(
+        self,
+        states: T.Union[torch.Tensor, T.List[np_typing.NDArray]],
+        greedy: bool = False,
+        return_tensor: bool = False,
+    ) -> T.Union[np_typing.NDArray, torch.Tensor, int]:
         """
-        Performs one update step using the DDQN update rule.
+        Chooses an action using epsilon-greedy policy.
         """
-        self.train()  # Set the network to training mode
-
-        # Predict Q-values for the current state-action pair using the online network.
-        predicted_q = self.q(state, action)
-        batch_size = state.shape[0]
-
-        # Compute Q-values for all actions at the next state using the online network.
-        q_values_next_online = []
-        for a in range(self.num_actions):
-            q_val = self.q(next_state, self.a2t(a, batch_size))
-            q_values_next_online.append(q_val)
-        q_values_next_online = torch.cat(q_values_next_online, dim=-1)
-        # Select best actions for next state based on the online network.
-        best_actions = torch.argmax(q_values_next_online, dim=-1, keepdim=True)
-
-        # Compute Q-values for all actions at the next state using the target network.
-        q_values_next_target = []
-        for a in range(self.num_actions):
-            q_val = self.target_q(next_state, self.a2t(a, batch_size))
-            q_values_next_target.append(q_val)
-        q_values_next_target = torch.cat(q_values_next_target, dim=-1)
-        # Gather the target Q-value for the best action.
-        target_q_selected = q_values_next_target.gather(1, best_actions).detach()
-
-        # Compute the target using the DDQN rule.
-        target = reward.view(-1, 1) + self.gamma * target_q_selected
-
-        # Calculate loss and perform a gradient update.
-        loss = F.mse_loss(predicted_q, target)
-        self.optim.zero_grad()
-        loss.backward()
-        self.optim.step()
-
-
-        # Periodically update the target network.
-        self.update_counter += 1
-        if self.update_counter % self.target_update_freq == 0:
-            self.target_q.load_state_dict(self.q.state_dict())
-        return loss.item()
-
-    def act(self, state, greedy=False, return_tensor=False):
-        """
-        Chooses an action using an epsilon-greedy policy.
-        """
-        # Convert state to tensor if not already.
-        if isinstance(state, torch.Tensor):
-            s = state
+        if isinstance(states, torch.Tensor):
+            s = states
         else:
+            state = np.concatenate(states, axis=-1)  # (H, W, stacked_channels)
+            state = state.transpose(2, 0, 1)
             s = torch.Tensor(state.copy())[None, :].to(self.device)
+
         batch_size = s.shape[0]
-        # If greedy, epsilon is 0.
         ep = 0.0 if greedy else self.ep
+
         if random.random() < 1 - ep:
-            q_values = []
-            for a in range(self.num_actions):
-                q_val = self.q(s, self.a2t(a, batch_size)).detach()
-                q_values.append(q_val)
-            q_values = torch.cat(q_values, dim=-1)
+            q_values = self.q(s).detach()
             result = torch.argmax(q_values, dim=-1)
         else:
             result = (
-                torch.Tensor(
-                    [random.randrange(self.num_actions) for _ in range(batch_size)]
-                )
-                .int()
-                .to(self.device)
+                torch.randint(low=0, high=self.num_actions, size=(batch_size,), device=self.device)
             )
+
         if batch_size == 1:
             return result if return_tensor else int(result[0])
         return result if return_tensor else result.cpu().numpy()

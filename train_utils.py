@@ -115,7 +115,20 @@ def train_dqn_agent(
         state_stack.append(state)
 
         action = agent.act(state_stack)
+        prev_x_pos = 0
+        stuck_counter = 0
+        stuck_threshold = 50
         next_state, reward, done, info = env.step(action)
+        curr_x_pos = info.get('x_pos', 0)
+
+        if curr_x_pos <= prev_x_pos:
+            stuck_counter += 1
+        else:
+            stuck_counter = 0
+        
+        prev_x_pos = curr_x_pos
+        if stuck_counter >= stuck_threshold:
+            done = True
 
         state_stack.append(next_state)
 
@@ -148,7 +161,8 @@ def train_dqn_agent(
             env.render()
 
         episode_train_reward += new_reward
-        episode_train_loss += step_loss
+        if step_loss != None:
+            episode_train_loss += step_loss
         episode_steps += 1
         episode_max_x_pos = max(episode_max_x_pos, info["x_pos"])
         state = next_state.copy()

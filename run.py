@@ -84,7 +84,7 @@ def parse_args():
     parser.add_argument("--replay_buffer_batch_size", type=int, default=1024)
     parser.add_argument("--agent_update_frequency", type=int, default=5000)
     parser.add_argument("--replay_buffer_sample_size", type=int, default=50000)
-
+    parser.add_argument("--replay_buffer_max_size", type=int, default=100000)
     return parser.parse_args()
 
 
@@ -142,6 +142,7 @@ if __name__ == "__main__":
         "max_train_episode_steps": args.max_train_episode_steps,
         "replay_buffer_batch_size": args.replay_buffer_batch_size,
         "replay_buffer_sample_size": args.replay_buffer_sample_size,
+        "replay_buffer_max_size": args.replay_buffer_max_size,
         "agent_update_frequency": args.agent_update_frequency,
     }
 

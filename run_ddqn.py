@@ -9,40 +9,70 @@ from agent.ddqn.ddqn_agent import DDQNAgent
 from train_utils import train_dqn_agent
 import argparse
 import warnings
+from env_utils import create_env
 
-num_frames = 12
+num_frames = 4
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
+import gym
+
+class FrameSkipEnv(gym.Wrapper):
+    def __init__(self, env, skip=4):
+        super().__init__(env)
+        self._skip = skip
+
+    def step(self, action):
+        total_reward = 0.0
+        done = False
+        for _ in range(self._skip):
+            obs, reward, done, info = self.env.step(action)
+            total_reward += reward
+            if done:
+                break
+        return obs, total_reward, done, info
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train DQN agents on Super Mario Bros")
+    parser = argparse.ArgumentParser(description="Train DDQN agents on Super Mario Bros")
     parser.add_argument("--use_custom_reward", action="store_true")
     parser.add_argument(
-        "--num_train_steps", type=int, default=100_000, help="Number of training steps"
+        "--num_train_steps", type=int, default=15_00_000, help="Number of training steps"
     )
-    parser.add_argument("--max_train_episode_steps", type=int, default=5000)
+    parser.add_argument("--max_train_episode_steps", type=int, default=50000)
     parser.add_argument("--save_every", type=int, default=10_000, help="Save checkpoint frequency")
     parser.add_argument("--eval_every", type=int, default=10_000, help="Evaluation frequency")
     parser.add_argument(
         "--num_eval_episodes", type=int, default=1, help="Number of evaluation episodes"
     )
     parser.add_argument(
-        "--max_eval_steps", type=int, default=5_000, help="Maximum evaluation steps per episode"
+        "--max_eval_steps", type=int, default=100000, help="Maximum evaluation steps per episode"
     )
     parser.add_argument("--render", action="store_true", help="Render environment")
     parser.add_argument("--frame_stack_size", type=int, default=4, help="Number of frames to stack")
     parser.add_argument("--lr", type=float, default=0.0001, help="Learning rate")
     parser.add_argument(
-        "--alpha_mem", type=float, default=0.05, help="Memory alpha parameter for EMDQN"
+        "--alpha_mem", type=float, default=0.01, help="Memory alpha parameter for EMDQN"
     )
-    parser.add_argument("--ep", type=float, default=0.025, help="Exploration probability")
+    parser.add_argument(
+        "--ep_init", type=float, default=0.5, help="Exploration probability (initial)"
+    )
+    parser.add_argument(
+        "--ep_final", type=float, default=0.1, help="Exploration probability (final)"
+    )
+    parser.add_argument("--num_steps_before_decay", type=int, default=100000)
+    parser.add_argument("--num_decay_steps", type=int, default=1400000)
+
     parser.add_argument("--gamma", type=float, default=0.99, help="Discount factor")
     parser.add_argument(
         "--memory_update_freq", type=int, default=1_000, help="Memory update frequency for EMDQN"
     )
     parser.add_argument(
-        "--checkpoint_dir", type=str, default="checkpoints", help="Directory to save checkpoints"
+        "--checkpoint_dir", type=str, default="ddqn_check", help="Directory to save checkpoints"
     )
+
+    parser.add_argument("--num_steps_between_target_updates", type=int, default=10000)
+
     parser.add_argument(
         "--agent_type",
         type=str,
@@ -55,7 +85,7 @@ def parse_args():
         "--backbone_input_shape",
         type=int,
         nargs=2,
-        default=[num_frames, 240, 256],
+        default=[num_frames, 84, 84],
         help="Input shape for backbone network",
     )
     parser.add_argument("--backbone_channels", type=int, default=3, help="Channels per image")
@@ -82,6 +112,10 @@ def parse_args():
     parser.add_argument(
         "--target_update_freq", type=int, default=100, help="Target network update frequency for DDQN"
     )
+    parser.add_argument("--replay_buffer_batch_size", type=int, default=128)
+    parser.add_argument("--agent_update_frequency", type=int, default=25000)
+    parser.add_argument("--replay_buffer_sample_size", type=int, default=25000)
+    parser.add_argument("--replay_buffer_max_size", type=int, default=30000)
     return parser.parse_args()
 
 
@@ -100,9 +134,12 @@ if __name__ == "__main__":
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     save_args_to_json(args, args.checkpoint_dir)
 
-    env = gym_super_mario_bros.make("SuperMarioBros-v0")
-    env = JoypadSpace(env, SIMPLE_MOVEMENT)
+    env = create_env(stack_size=4)
     num_actions = env.action_space.n
+
+    # obs = env.reset()
+    # print(obs.shape)
+    # exit()
 
     q_params = {
         "input_shape": tuple(args.backbone_input_shape),
@@ -120,12 +157,24 @@ if __name__ == "__main__":
         "frame_stack_size": args.frame_stack_size,
         "use_custom_reward": args.use_custom_reward,
         "max_train_episode_steps": args.max_train_episode_steps,
+        "replay_buffer_batch_size": args.replay_buffer_batch_size,
+        "replay_buffer_sample_size": args.replay_buffer_sample_size,
+        "replay_buffer_max_size": args.replay_buffer_max_size,
+        "agent_update_frequency": args.agent_update_frequency,
+    }
+
+    ep_sched_params = {
+        "ep_init": args.ep_init,
+        "ep_final": args.ep_final,
+        "num_steps_before_decay": args.num_steps_before_decay,
+        "num_decay_steps": args.num_decay_steps,
     }
 
     if args.agent_type in ["emdqn", "both"]:
         emdqn_agent = EMDQNAgent(
             num_actions=num_actions,
             q_params=q_params,
+            ep_sched_params=ep_sched_params,
             lr=args.lr,
             ep=args.ep,
             gamma=args.gamma,
@@ -143,6 +192,7 @@ if __name__ == "__main__":
     if args.agent_type in ["dqn", "both"]:
         dqn_agent = BasicQAgent(
             num_actions=num_actions,
+            ep_sched_params=ep_sched_params,
             q_params=q_params,
             lr=args.lr,
             ep=args.ep,
@@ -159,11 +209,14 @@ if __name__ == "__main__":
         ddqn_agent = DDQNAgent(
             num_actions=num_actions,
             q_params=q_params,
+            ep_sched_params=ep_sched_params,
             lr=args.lr,
-            ep=args.ep,
             gamma=args.gamma,
             target_update_freq=args.target_update_freq,
+            num_steps_between_target_updates=args.num_steps_between_target_updates
         )
+        # ddqn_agent.load("checkpoints", step = 130000)
+        # print("Model restored. Runnin start eval")
         train_dqn_agent(
             ddqn_agent,
             env,

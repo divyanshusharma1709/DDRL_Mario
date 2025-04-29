@@ -31,6 +31,9 @@ def stitch_videos(video_dir, curr_train_step):
     final_clip.write_videofile(
         video_dir + "/" + str(curr_train_step) + "_stitched_op.mp4", codec="libx264"
     )
+    for clip in clips:
+        clip.close()
+    final_clip.close()
     for f in video_files:
         os.remove(f)
 

@@ -120,7 +120,7 @@ def train_dqn_agent(
 
         agent.update_state(step, state, action, new_reward, done)
 
-        if do_eval and step % eval_every == 0 and step != 0 and eval_every > 0:
+        if do_eval and step % eval_every == 0 and eval_every > 0:
             eval_results_dict = eval_agent(
                 agent=agent,
                 num_episodes=num_eval_episodes,

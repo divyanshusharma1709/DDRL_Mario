@@ -48,7 +48,8 @@ def eval_agent(
     progress_threshold: int = 5,
     use_custom_reward: bool = False,
 ) -> T.Dict[str, T.Any]:
-    env = create_env(stack_size=frame_stack_size, video_dir=os.path.join(checkpoint_dir, video_dir))
+    video_dir = os.path.join(checkpoint_dir, video_dir)
+    env = create_env(stack_size=frame_stack_size, video_dir=video_dir)
 
     agent.eval()
 
@@ -67,7 +68,7 @@ def eval_agent(
 
         state = env.reset()
         while not done and episode_length < max_eval_steps_per_episode:
-            action = agent.act(curr_train_step, state, greedy=True)
+            action = agent.act(curr_train_step, state.__array__(), greedy=True)
             state, reward, done, info = env.step(action)
 
             if use_custom_reward:

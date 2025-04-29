@@ -10,7 +10,7 @@ from env_utils import create_env
 from moviepy import VideoFileClip, concatenate_videoclips
 
 
-def stitch_videos(video_dir, eval_episode):
+def stitch_videos(video_dir, curr_train_step):
     """
     Stitch together evaluation videos for one evaluation call.
 
@@ -29,7 +29,7 @@ def stitch_videos(video_dir, eval_episode):
     # Concatenate videos
     final_clip = concatenate_videoclips(clips)
     final_clip.write_videofile(
-        video_dir + "/" + str(eval_episode) + "_stitched_op.mp4", codec="libx264"
+        video_dir + "/" + str(curr_train_step) + "_stitched_op.mp4", codec="libx264"
     )
     for f in video_files:
         os.remove(f)
@@ -42,12 +42,13 @@ def eval_agent(
     render: bool,
     curr_train_step: int,
     frame_stack_size: int,
-    video_dir: str = "eval_vids/",
+    checkpoint_dir: str = "checkpoints",
+    video_dir: str = "eval_vids",
     stuck_threshold: int = 200,
     progress_threshold: int = 5,
     use_custom_reward: bool = False,
 ) -> T.Dict[str, T.Any]:
-    env = create_env(stack_size=frame_stack_size, video_dir=video_dir)
+    env = create_env(stack_size=frame_stack_size, video_dir=os.path.join(checkpoint_dir, video_dir))
 
     agent.eval()
 

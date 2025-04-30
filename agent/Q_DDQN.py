@@ -14,6 +14,8 @@ class Qv2(nn.Module):
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, stride=1),
             nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=3, stride=1),
+            nn.ReLU(),
         )
 
         # Dynamically compute fully connected size

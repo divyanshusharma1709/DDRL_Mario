@@ -54,17 +54,17 @@ class BaseAgent(abc.ABC):
         reward_tensor = torch.Tensor([[reward]]).to(self.device)
         return state_tensor, action_tensor, reward_tensor, next_state_tensor
 
-    def learn_batch(self, step: int, dataloader: DataLoader) -> float:
+    def learn_batch(self, step: int, done: bool, dataloader: DataLoader) -> float:
         self.train()
         total_loss = 0.0
-        for batch in tqdm.tqdm(dataloader, total=len(dataloader)):
+        for batch in dataloader:
             state, action, reward, next_state = (
                 batch["state"].to(dtype=torch.float32).to(self.device),
                 batch["action"].to(self.device),
                 batch["reward"].to(dtype=torch.float32).to(self.device),
                 batch["next_state"].to(dtype=torch.float32).to(self.device),
             )
-            loss = self.compute_loss(step, state, action, reward, next_state)
+            loss = self.compute_loss(step, done, state, action, reward, next_state)
             self.optim.zero_grad()
             loss.backward()
             self.optim.step()
@@ -75,6 +75,7 @@ class BaseAgent(abc.ABC):
     def compute_loss(
         self,
         step: int,
+        done: bool,
         state_tensor: torch.Tensor,
         action_tensor: torch.Tensor,
         reward_tensor: torch.Tensor,
@@ -87,7 +88,7 @@ class BaseAgent(abc.ABC):
         self,
         step: int,
         state: torch.Tensor,
-        greedy: bool = False,
+        ep: T.Optional[float] = None,
         return_tensor: bool = False,
     ) -> int:
         raise NotImplementedError("subclass must implement")

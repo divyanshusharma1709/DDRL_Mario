@@ -1,8 +1,9 @@
 import collections
 import typing as T
+import numpy as np
 import numpy.typing as np_typing
 
-from torch.utils.data import RandomSampler
+from torch.utils.data import RandomSampler, WeightedRandomSampler
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import Dataset
 
@@ -27,34 +28,52 @@ def compute_reward(
 
 class ReplayBuffer:
 
-    def __init__(self, max_size: int, batch_size: int):
+    def __init__(self, max_size: int, batch_size: int, weighted: bool = False):
         self.batch_size = batch_size
         self.states = collections.deque(maxlen=max_size)
         self.next_states = collections.deque(maxlen=max_size)
         self.actions = collections.deque(maxlen=max_size)
         self.rewards = collections.deque(maxlen=max_size)
+        self.losses = collections.deque(maxlen=max_size)
+        self.weighted = weighted
 
     def store(
-        self, state: np_typing.NDArray, action: int, reward: float, next_state: np_typing.NDArray
+        self,
+        state: np_typing.NDArray,
+        action: int,
+        reward: float,
+        next_state: np_typing.NDArray,
+        loss: float,
     ):
         self.states.append(state)
         self.next_states.append(next_state)
         self.actions.append(action)
         self.rewards.append(reward)
+        self.losses.append(loss)
 
     def __len__(self):
         return len(self.states)
 
-    def sample(self, n: int) -> DataLoader:
+    def sample(self, n: int, beta: float) -> DataLoader:
         # Create a dataset from this buffer
         dataset = ReplayDataset(self)
 
         # If n is larger than the buffer size, adjust it
-        sample_size = min(n, len(self))
+        sample_size = min(n, len(self), self.batch_size)
 
+        if self.weighted:
+            td_errors = np.sqrt(self.losses)
+            return DataLoader(
+                dataset,
+                batch_size=self.batch_size,
+                sampler=WeightedRandomSampler(
+                    weights=td_errors, replacement=False, num_samples=sample_size
+                ),
+            )
+        # use uniform sampling
         return DataLoader(
             dataset,
-            batch_size=min(self.batch_size, sample_size),
+            batch_size=self.batch_size,
             sampler=RandomSampler(data_source=dataset, replacement=False, num_samples=sample_size),
             drop_last=False,
         )

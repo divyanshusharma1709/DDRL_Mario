@@ -114,6 +114,7 @@ class EMDQNAgent(BasicQAgent):
     def compute_loss(
         self,
         step: int,
+        done: bool,
         state_tensor: torch.Tensor,
         action_tensor: torch.Tensor,
         reward_tensor: torch.Tensor,
@@ -124,7 +125,7 @@ class EMDQNAgent(BasicQAgent):
         greedy_action = self.act(
             step,
             next_state_tensor,
-            greedy=True,
+            ep=0.0,
             return_tensor=True,
         )
         target = (

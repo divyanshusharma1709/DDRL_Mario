@@ -68,7 +68,7 @@ def eval_agent(
 
         state = env.reset()
         while not done and episode_length < max_eval_steps_per_episode:
-            action = agent.act(curr_train_step, state.__array__(), greedy=True)
+            action = agent.act(curr_train_step, state.__array__(), ep=0.05)
             state, reward, done, info = env.step(action)
 
             if use_custom_reward:

@@ -67,24 +67,25 @@ def parse_args():
         "--backbone_conv_channels",
         type=int,
         nargs="+",
-        default=[32, 64, 128, 256],
+        default=[32, 64, 128, 256, 512],
         help="Conv channels for backbone",
     )
     parser.add_argument(
-        "--backbone_output_dim", type=int, default=256, help="Output dimension of backbone"
+        "--backbone_output_dim", type=int, default=512, help="Output dimension of backbone"
     )
     parser.add_argument("--action_emb_dim", type=int, default=16, help="Action embedding dimension")
     parser.add_argument(
         "--reward_predictor_dims",
         type=int,
         nargs="+",
-        default=[512, 128, 32],
+        default=[512, 256],
         help="Reward predictor hidden layers",
     )
     parser.add_argument("--replay_buffer_batch_size", type=int, default=1024)
     parser.add_argument("--agent_update_frequency", type=int, default=5000)
     parser.add_argument("--replay_buffer_sample_size", type=int, default=50000)
     parser.add_argument("--replay_buffer_max_size", type=int, default=100000)
+    parser.add_argument("--use_prioritized_replay", action="store_true")
     return parser.parse_args()
 
 
@@ -143,6 +144,7 @@ if __name__ == "__main__":
         "replay_buffer_batch_size": args.replay_buffer_batch_size,
         "replay_buffer_sample_size": args.replay_buffer_sample_size,
         "replay_buffer_max_size": args.replay_buffer_max_size,
+        "use_prioritized_replay": args.use_prioritized_replay,
         "agent_update_frequency": args.agent_update_frequency,
     }
 

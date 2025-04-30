@@ -46,11 +46,14 @@ def train_dqn_agent(
     agent_update_frequency = params["agent_update_frequency"]
     replay_buffer_sample_size = params["replay_buffer_sample_size"]
     replay_buffer_max_size = params["replay_buffer_max_size"]
+    use_prioritized_replay = params["use_prioritized_replay"]
 
     eval_metrics = collections.defaultdict(list)
     train_metrics = collections.defaultdict(list)
 
-    replay_buffer = ReplayBuffer(max_size=replay_buffer_max_size, batch_size=batch_size)
+    replay_buffer = ReplayBuffer(
+        max_size=replay_buffer_max_size, batch_size=batch_size, weighted=use_prioritized_replay
+    )
 
     episode_train_loss = 0.0
     episode_train_reward = 0.0
@@ -61,7 +64,9 @@ def train_dqn_agent(
     episode_max_x_pos = 0.0
 
     stuck_counter = 0
-    max_stuck_iters = 250
+    max_stuck_iters = 1000
+
+    replay_buffer_beta_init = 0.4
 
     prev_info = None
     done = True
@@ -73,6 +78,7 @@ def train_dqn_agent(
                 add_train_metrics(
                     train_metrics,
                     {
+                        "train_step": step,
                         "ep_idx": episode_idx,
                         "ep_steps": episode_steps,
                         "ep_train_loss_per_step": episode_train_loss / (episode_steps + 1),
@@ -80,8 +86,8 @@ def train_dqn_agent(
                         "ep_train_reward_per_step": episode_train_reward / (episode_steps + 1),
                         "ep_total_reward": episode_train_reward,
                         "ep_total_original_reward": episode_raw_reward,
-                        "using_custom_reward": use_custom_reward,
                         "ep_max_x_pos": max(prev_info["x_pos"], episode_max_x_pos),
+                        "using_custom_reward": use_custom_reward,
                     },
                 )
                 pd.DataFrame(train_metrics).to_csv(f"{checkpoint_dir}/train_metrics.csv")
@@ -108,15 +114,16 @@ def train_dqn_agent(
         episode_reward += new_reward
 
         step_loss = agent.compute_loss(
-            step, *agent.tensorize(state, action, new_reward, next_state)
+            step, done, *agent.tensorize(state, action, new_reward, next_state)
         ).item()
 
-        replay_buffer.store(state, action, new_reward, next_state)
+        replay_buffer.store(state, action, new_reward, next_state, step_loss)
 
         if step > 0 and step % agent_update_frequency == 0:
             sample_size = min(replay_buffer_sample_size, len(replay_buffer))
-            sample = replay_buffer.sample(n=sample_size)
-            agent.learn_batch(step, sample)
+            beta = replay_buffer_beta_init + (1 - replay_buffer_beta_init) * step / num_train_steps
+            sample = replay_buffer.sample(n=sample_size, beta=beta)
+            agent.learn_batch(step, done, sample)
 
         agent.update_state(step, state, action, new_reward, done)
 

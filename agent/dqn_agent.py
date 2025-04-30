@@ -61,6 +61,10 @@ class Q(nn.Module):
             backbone_output_dim + action_emb_dim,
             reward_predictor_hidden_layer_dims,
         )
+        print(
+            "Reward predictor param count:",
+            sum(p.numel() for p in self.reward_predictor.parameters()),
+        )
 
         self.to(device)
 
@@ -108,22 +112,18 @@ class BasicQAgent(BaseAgent):
     def compute_loss(
         self,
         step: int,
+        done: bool,
         state_tensor: torch.Tensor,
         action_tensor: torch.Tensor,
         reward_tensor: torch.Tensor,
         next_state_tensor: torch.Tensor,
     ) -> torch.Tensor:
         predicted_reward = self.q(state_tensor, action_tensor)
-        greedy_action = self.act(
-            step,
-            next_state_tensor,
-            greedy=True,
-            return_tensor=True,
-        )
-        bootstrapped_future_reward = (
+        greedy_action = self.act(step, next_state_tensor, ep=0.0, return_tensor=True)  # greedy
+        discounted_future_reward = (
             self.gamma * self.q_target(next_state_tensor, greedy_action).detach()
         )
-        target = reward_tensor.view(-1, 1) + bootstrapped_future_reward
+        target = reward_tensor.view(-1, 1) + discounted_future_reward
         loss = F.mse_loss(predicted_reward, target)
         return loss
 
@@ -135,7 +135,7 @@ class BasicQAgent(BaseAgent):
         self,
         step: int,
         state: T.Union[torch.Tensor, np_typing.NDArray],
-        greedy: bool = False,
+        ep: T.Optional[float] = None,
         return_tensor: bool = False,
     ) -> T.Union[np_typing.NDArray, torch.Tensor, int]:
         if isinstance(state, torch.Tensor):
@@ -145,7 +145,7 @@ class BasicQAgent(BaseAgent):
 
         batch_size = s.shape[0]
 
-        ep = 0.0 if greedy else self.ep_sched.get_epsilon(step)
+        ep = ep if ep is not None else self.ep_sched.get_epsilon(step)
         if random.random() < 1 - ep:
             # compute the Q values for each action from the input state
             action_rewards = [

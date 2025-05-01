@@ -7,39 +7,25 @@ import torch
 from torch.utils.data.dataloader import DataLoader
 from torch.optim import Optimizer
 
-# Detect environment and use appropriate tqdm
-import sys
 
-try:
-    # Check if we're in a notebook environment
-    is_notebook = "ipykernel" in sys.modules
-    if is_notebook:
-        import tqdm.notebook as tqdm
-    else:
-        import tqdm
-except ImportError:
-    # Fall back to regular tqdm
-    import tqdm
+# class LinearEpsilonDecayScheduler:
 
+#     def __init__(
+#         self, ep_inits: float, ep_finals: float, num_steps_before_decay: int, num_decay_steps: int
+#     ):
+#         self.ep_init = ep_init
+#         self.ep_final = ep_final
+#         self.init_to_final_diff = ep_init - ep_final
+#         self.num_steps_before_decay = num_steps_before_decay
+#         self.num_decay_steps = num_decay_steps
 
-class LinearEpsilonDecayScheduler:
-
-    def __init__(
-        self, ep_inits: float, ep_finals: float, num_steps_before_decay: int, num_decay_steps: int
-    ):
-        self.ep_init = ep_init
-        self.ep_final = ep_final
-        self.init_to_final_diff = ep_init - ep_final
-        self.num_steps_before_decay = num_steps_before_decay
-        self.num_decay_steps = num_decay_steps
-
-    def get_epsilon(self, step: int) -> float:
-        if step < self.num_steps_before_decay:
-            return self.ep_init
-        if step > self.num_steps_before_decay + self.num_decay_steps:
-            return self.ep_final
-        decay_steps_so_far = step - self.num_steps_before_decay
-        return self.ep_init - (decay_steps_so_far / self.num_decay_steps) * self.init_to_final_diff
+#     def get_epsilon(self, step: int) -> float:
+#         if step < self.num_steps_before_decay:
+#             return self.ep_init
+#         if step > self.num_steps_before_decay + self.num_decay_steps:
+#             return self.ep_final
+#         decay_steps_so_far = step - self.num_steps_before_decay
+#         return self.ep_init - (decay_steps_so_far / self.num_decay_steps) * self.init_to_final_diff
 
 
 class PiecewiseLinearEpsilonDecayScheduler:
@@ -91,7 +77,7 @@ class BaseAgent(abc.ABC):
     def learn_batch(self, step: int, done: bool, dataloader: DataLoader) -> float:
         self.train()
         total_loss = 0.0
-        for batch in tqdm.tqdm(dataloader, leave=False, total=len(dataloader)):
+        for batch in dataloader:
             state, action, reward, next_state = (
                 batch["state"].to(dtype=torch.float32).to(self.device),
                 batch["action"].to(self.device),

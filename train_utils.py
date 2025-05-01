@@ -122,8 +122,7 @@ def train_dqn_agent(
 
         if step > 0 and step % agent_update_frequency == 0:
             sample_size = min(replay_buffer_sample_size, len(replay_buffer))
-            beta = replay_buffer_beta_init + (1 - replay_buffer_beta_init) * step / num_train_steps
-            sample = replay_buffer.sample(n=sample_size, beta=beta)
+            sample = replay_buffer.sample(n=sample_size, beta=0)
             agent.learn_batch(step, done, sample)
 
         agent.update_state(step, state, action, new_reward, done)

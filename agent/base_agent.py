@@ -78,7 +78,7 @@ class BaseAgent(abc.ABC):
     def learn_batch(self, step: int, done: bool, dataloader: DataLoader) -> float:
         self.train()
         total_loss = 0.0
-        for batch in dataloader:
+        for batch in tqdm.tqdm(dataloader, leave=False, total=len(dataloader)):
             state, action, reward, next_state = (
                 batch["state"].to(dtype=torch.float32).to(self.device),
                 batch["action"].to(self.device),

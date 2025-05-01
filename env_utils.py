@@ -60,16 +60,29 @@ class ResizeObservation(gym.ObservationWrapper):
         obs_shape = self.shape + self.observation_space.shape[2:]
         self.observation_space = Box(low=0, high=255, shape=obs_shape, dtype=np.uint8)
 
+        # self.counter = 0
+
     def observation(self, observation):
         transforms = Tr.Compose([Tr.Resize(self.shape, antialias=True), Tr.Normalize(0, 255)])
         observation = transforms(observation).squeeze(0)
+        # import matplotlib.pyplot as plt
+        # # For debugging: uncomment to visualize the observation
+        # if 200 < self.counter <= 250:
+        #     plt.figure(figsize=(5, 5))
+        #     plt.imshow(observation.cpu().numpy(), cmap="gray")
+        #     plt.title("Transformed Observation")
+        #     plt.axis("off")
+        #     plt.show()
+        # if self.counter > 250:
+        #     exit(1)
+        # self.counter += 1
         return observation
 
 
 def create_env(stack_size: int, video_dir: T.Optional[str] = None, env_version: str = "v0"):
     env = gym_super_mario_bros.make(f"SuperMarioBros-{env_version}")
     env = JoypadSpace(env, SIMPLE_MOVEMENT)
-    env = SkipFrame(env, skip=4)
+    # env = SkipFrame(env, skip=4)
     env = GrayScaleObservation(env)
     env = ResizeObservation(env, shape=84)
     env = FrameStack(env, num_stack=stack_size)

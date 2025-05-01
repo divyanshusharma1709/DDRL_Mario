@@ -1,4 +1,4 @@
-import heapq
+import collections
 import typing as T
 import numpy as np
 import numpy.typing as np_typing
@@ -27,14 +27,13 @@ def compute_reward(
 class ReplayBuffer:
 
     def __init__(self, max_size: int, batch_size: int, weighted: bool = False):
-        self.max_size = max_size
         self.batch_size = batch_size
-        self.states = []
-        self.next_states = []
-        self.actions = []
-        self.rewards = []
-        self.errors = []
         self.weighted = weighted
+        self.states = collections.deque(maxlen=max_size)
+        self.next_states = collections.deque(maxlen=max_size)
+        self.actions = collections.deque(maxlen=max_size)
+        self.rewards = collections.deque(maxlen=max_size)
+        self.losses = collections.deque(maxlen=max_size)
 
     def store(
         self,
@@ -44,17 +43,11 @@ class ReplayBuffer:
         next_state: np_typing.NDArray,
         loss: float,
     ):
-        key = -np.sqrt(loss)
-        if len(self.states) < self.max_size:
-            heapq.heappush(self.states, (key, state))
-            heapq.heappush(self.next_states, (key, next_state))
-            heapq.heappush(self.actions, (key, action))
-            heapq.heappush(self.rewards, (key, reward))
-        else:
-            heapq.heappushpop(self.states, (key, state))
-            heapq.heappushpop(self.next_states, (key, next_state))
-            heapq.heappushpop(self.actions, (key, action))
-            heapq.heappushpop(self.rewards, (key, reward))
+        self.states.append(state)
+        self.next_states.append(next_state)
+        self.actions.append(action)
+        self.rewards.append(reward)
+        self.losses.append(loss)
 
     def __len__(self):
         return len(self.states)
@@ -64,18 +57,17 @@ class ReplayBuffer:
         dataset = ReplayDataset(self)
 
         # If n is larger than the buffer size, adjust it
-        sample_size = min(n, len(self), self.batch_size)
+        sample_size = min(n, len(self))
 
         if self.weighted:
-            neg_errors, _ = zip(*self.states)
-            errors = -np.array(neg_errors)
-            normalized_td_errors = errors / np.max(errors)
+            normalized_td_errors = np.sqrt(self.losses) / np.max(self.losses)
             return DataLoader(
                 dataset,
                 batch_size=self.batch_size,
                 sampler=WeightedRandomSampler(
                     weights=normalized_td_errors, replacement=False, num_samples=sample_size
                 ),
+                drop_last=False,
             )
         # use uniform sampling
         return DataLoader(
@@ -95,8 +87,8 @@ class ReplayDataset(Dataset):
 
     def __getitem__(self, idx):
         return {
-            "state": self.replay_buffer.states[idx][1],
-            "action": self.replay_buffer.actions[idx][1],
-            "reward": self.replay_buffer.rewards[idx][1],
-            "next_state": self.replay_buffer.next_states[idx][1],
+            "state": self.replay_buffer.states[idx],
+            "action": self.replay_buffer.actions[idx],
+            "reward": self.replay_buffer.rewards[idx],
+            "next_state": self.replay_buffer.next_states[idx],
         }

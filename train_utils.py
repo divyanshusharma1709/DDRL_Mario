@@ -10,12 +10,12 @@ try:
     # Check if we're in a notebook environment
     is_notebook = "ipykernel" in sys.modules
     if is_notebook:
-        from tqdm.notebook import tqdm
+        import tqdm.notebook as tqdm
     else:
-        from tqdm import tqdm
+        import tqdm
 except ImportError:
     # Fall back to regular tqdm
-    from tqdm import tqdm
+    import tqdm
 from gym import Env
 from agent.base_agent import BaseAgent
 from eval_utils import eval_agent

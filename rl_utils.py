@@ -67,7 +67,8 @@ class ReplayBuffer:
         sample_size = min(n, len(self), self.batch_size)
 
         if self.weighted:
-            errors, _ = zip(*self.states)
+            neg_errors, _ = zip(*self.states)
+            errors = -np.array(neg_errors)
             normalized_td_errors = errors / np.max(errors)
             return DataLoader(
                 dataset,

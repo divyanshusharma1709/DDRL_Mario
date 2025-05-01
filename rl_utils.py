@@ -1,4 +1,4 @@
-import collections
+import heapq
 import typing as T
 import numpy as np
 import numpy.typing as np_typing
@@ -27,12 +27,13 @@ def compute_reward(
 class ReplayBuffer:
 
     def __init__(self, max_size: int, batch_size: int, weighted: bool = False):
+        self.max_size = max_size
         self.batch_size = batch_size
-        self.states = collections.deque(maxlen=max_size)
-        self.next_states = collections.deque(maxlen=max_size)
-        self.actions = collections.deque(maxlen=max_size)
-        self.rewards = collections.deque(maxlen=max_size)
-        self.losses = collections.deque(maxlen=max_size)
+        self.states = []
+        self.next_states = []
+        self.actions = []
+        self.rewards = []
+        self.errors = []
         self.weighted = weighted
 
     def store(
@@ -43,11 +44,17 @@ class ReplayBuffer:
         next_state: np_typing.NDArray,
         loss: float,
     ):
-        self.states.append(state)
-        self.next_states.append(next_state)
-        self.actions.append(action)
-        self.rewards.append(reward)
-        self.losses.append(loss)
+        key = -np.sqrt(loss)
+        if len(self.states) < self.max_size:
+            heapq.heappush(self.states, (key, state))
+            heapq.heappush(self.next_states, (key, next_state))
+            heapq.heappush(self.actions, (key, action))
+            heapq.heappush(self.rewards, (key, reward))
+        else:
+            heapq.heappushpop(self.states, (key, state))
+            heapq.heappushpop(self.next_states, (key, next_state))
+            heapq.heappushpop(self.actions, (key, action))
+            heapq.heappushpop(self.rewards, (key, reward))
 
     def __len__(self):
         return len(self.states)
@@ -60,7 +67,8 @@ class ReplayBuffer:
         sample_size = min(n, len(self), self.batch_size)
 
         if self.weighted:
-            normalized_td_errors = np.sqrt(self.losses) / np.max(self.losses)
+            errors, _ = zip(*self.states)
+            normalized_td_errors = errors / np.max(errors)
             return DataLoader(
                 dataset,
                 batch_size=self.batch_size,
@@ -86,8 +94,8 @@ class ReplayDataset(Dataset):
 
     def __getitem__(self, idx):
         return {
-            "state": self.replay_buffer.states[idx],
-            "action": self.replay_buffer.actions[idx],
-            "reward": self.replay_buffer.rewards[idx],
-            "next_state": self.replay_buffer.next_states[idx],
+            "state": self.replay_buffer.states[idx][1],
+            "action": self.replay_buffer.actions[idx][1],
+            "reward": self.replay_buffer.rewards[idx][1],
+            "next_state": self.replay_buffer.next_states[idx][1],
         }

@@ -6,7 +6,20 @@ import numpy.typing as np_typing
 import torch
 from torch.utils.data.dataloader import DataLoader
 from torch.optim import Optimizer
-import tqdm
+
+# Detect environment and use appropriate tqdm
+import sys
+
+try:
+    # Check if we're in a notebook environment
+    is_notebook = "ipykernel" in sys.modules
+    if is_notebook:
+        from tqdm.notebook import tqdm
+    else:
+        from tqdm import tqdm
+except ImportError:
+    # Fall back to regular tqdm
+    from tqdm import tqdm
 
 
 class LinearEpsilonDecayScheduler:

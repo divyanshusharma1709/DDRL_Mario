@@ -2,7 +2,20 @@ import random
 import collections
 import pandas as pd
 import typing as T
-import tqdm
+
+# Detect environment and use appropriate tqdm
+import sys
+
+try:
+    # Check if we're in a notebook environment
+    is_notebook = "ipykernel" in sys.modules
+    if is_notebook:
+        from tqdm.notebook import tqdm
+    else:
+        from tqdm import tqdm
+except ImportError:
+    # Fall back to regular tqdm
+    from tqdm import tqdm
 from gym import Env
 from agent.base_agent import BaseAgent
 from eval_utils import eval_agent

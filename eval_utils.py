@@ -50,20 +50,27 @@ def eval_agent(
     stuck_threshold: int = 200,
     progress_threshold: int = 5,
     use_custom_reward: bool = False,
+    env_version: str = "v3",
 ) -> T.Dict[str, T.Any]:
     video_dir = os.path.join(checkpoint_dir, video_dir)
-    env = create_env(stack_size=frame_stack_size, video_dir=video_dir)
+    env = create_env(
+        stack_size=frame_stack_size,
+        video_dir=video_dir,
+        env_version=env_version,
+    )
 
     agent.eval()
 
     episode_lengths = []
     episode_rewards = []
+    max_x_positions = []
 
     progress_bar = tqdm.tqdm(range(num_episodes), desc="Eval")
     prev_info = None
     for _ in progress_bar:
         episode_reward = 0.0
         episode_length = 0
+        episode_max_x_position = 0.0
         done = False
         # Stuck check
         last_x_pos = None
@@ -71,8 +78,9 @@ def eval_agent(
 
         state = env.reset()
         while not done and episode_length < max_eval_steps_per_episode:
-            action = agent.act(curr_train_step, state.__array__(), ep=0.05)
+            action = agent.act(curr_train_step, state.__array__(), ep=0.0)
             state, reward, done, info = env.step(action)
+            episode_max_x_position = max(episode_max_x_position, info["x_pos"])
 
             if use_custom_reward:
                 episode_reward += compute_reward(reward, info, prev_info)
@@ -90,7 +98,6 @@ def eval_agent(
                     # Count stuck episode.
                     if abs(x_pos - last_x_pos) < progress_threshold:
                         stuck_counter += 1
-                        # print(stuck_counter)
                     else:
                         stuck_counter = 0
                         last_x_pos = x_pos
@@ -119,15 +126,18 @@ def eval_agent(
 
         episode_rewards.append(episode_reward)
         episode_lengths.append(episode_length)
+        max_x_positions.append(episode_max_x_position)
 
-    env.close()
     stitch_videos(video_dir, curr_train_step)
+    env.close()
 
     reward_array = np.array(episode_rewards)
     length_array = np.array(episode_lengths)
+    max_x_array = np.array(max_x_positions)
 
     return {
         "average_episode_reward": np.mean(reward_array),
         "average_episode_length": np.mean(length_array),
         "average_per_step_reward": np.mean(reward_array / length_array),
+        "average_max_x_pos": np.mean(max_x_array),
     }

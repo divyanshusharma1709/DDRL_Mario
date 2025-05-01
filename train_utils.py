@@ -47,6 +47,7 @@ def train_dqn_agent(
     replay_buffer_sample_size = params["replay_buffer_sample_size"]
     replay_buffer_max_size = params["replay_buffer_max_size"]
     use_prioritized_replay = params["use_prioritized_replay"]
+    env_version = params["env_version"]
 
     eval_metrics = collections.defaultdict(list)
     train_metrics = collections.defaultdict(list)
@@ -64,7 +65,7 @@ def train_dqn_agent(
     episode_max_x_pos = 0.0
 
     stuck_counter = 0
-    max_stuck_iters = 1000
+    max_stuck_iters = 250
 
     replay_buffer_beta_init = 0.4
 
@@ -104,7 +105,7 @@ def train_dqn_agent(
             prev_info = None
 
         state = state.__array__()
-        action = agent.act(step, state)
+        action = agent.act(step, state, ep=None)
         next_state, reward, done, info = env.step(action)
         next_state = next_state.__array__()
         if use_custom_reward:
@@ -137,8 +138,10 @@ def train_dqn_agent(
                 use_custom_reward=use_custom_reward,
                 frame_stack_size=frame_stack_size,
                 checkpoint_dir=checkpoint_dir,
+                env_version=env_version,
             )
             add_eval_metrics(eval_metrics, eval_results_dict)
+            pd.DataFrame(eval_metrics).to_csv(f"{checkpoint_dir}/eval_metrics.csv")
 
         if step > 0 and step % save_every == 0:
             agent.save(checkpoint_dir, step, eval_metrics)
@@ -156,11 +159,10 @@ def train_dqn_agent(
 
         pbar.set_postfix(
             ep_idx=episode_idx,
-            ep_rew=episode_reward,
-            ep_max_x=episode_max_x_pos,
-            time=info["time"],
-            ep=agent.ep_sched.get_epsilon(step),
-            stuck_cnt=f"{stuck_counter}/{max_stuck_iters}",
+            reward=episode_reward,
+            max_x=episode_max_x_pos,
+            lives=info["life"],
+            eps=agent.ep_sched.get_epsilon(step),
         )
 
         episode_train_reward += new_reward

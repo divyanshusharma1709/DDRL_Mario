@@ -12,7 +12,7 @@ import tqdm
 class LinearEpsilonDecayScheduler:
 
     def __init__(
-        self, ep_init: float, ep_final: float, num_steps_before_decay: int, num_decay_steps: int
+        self, ep_inits: float, ep_finals: float, num_steps_before_decay: int, num_decay_steps: int
     ):
         self.ep_init = ep_init
         self.ep_final = ep_final
@@ -29,10 +29,31 @@ class LinearEpsilonDecayScheduler:
         return self.ep_init - (decay_steps_so_far / self.num_decay_steps) * self.init_to_final_diff
 
 
+class PiecewiseLinearEpsilonDecayScheduler:
+
+    def __init__(self, ep_values: T.List[float], ep_decay_step_counts: T.List[int]):
+        self.eps = ep_values
+        self.decay_step_counts = ep_decay_step_counts
+
+    def get_epsilon(self, step: int) -> float:
+        if step < self.decay_step_counts[0]:
+            return self.eps[0]
+        for (ep_init, ep_final), (step_init, step_final) in zip(
+            zip(self.eps, self.eps[1:]), zip(self.decay_step_counts, self.decay_step_counts[1:])
+        ):
+            if step_init <= step < step_final:
+                stage_decay_steps = step - step_init
+                stage_total_decay_steps = step_final - step_init
+                return ep_init - (stage_decay_steps / stage_total_decay_steps) * (
+                    ep_init - ep_final
+                )
+        return self.eps[-1]
+
+
 class BaseAgent(abc.ABC):
 
     def __init__(self, ep_sched_params: T.Dict[str, T.Any], optimizer: Optimizer) -> None:
-        self.ep_sched = LinearEpsilonDecayScheduler(**ep_sched_params)
+        self.ep_sched = PiecewiseLinearEpsilonDecayScheduler(**ep_sched_params)
         device = "cpu"
         if torch.cuda.is_available():
             device = "cuda"

@@ -7,6 +7,8 @@ from torch.utils.data import RandomSampler, WeightedRandomSampler
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import Dataset
 
+NUM_LIVES = 3
+
 
 def compute_reward(
     base_reward: float,
@@ -15,15 +17,11 @@ def compute_reward(
 ) -> float:
     if prev_info is None:
         return base_reward
-    lives_reward = -100 if info["life"] < prev_info["life"] else 0
-    score_reward = (info["score"] - prev_info["score"]) / 100
-    x_pos_reward = (info["x_pos"] - prev_info["x_pos"]) * 0.1
-    if info["status"] != prev_info["status"]:
-        status_reward = 100 if info["status"] != "small" else 0
-    else:
-        status_reward = 5 if info["status"] != "small" else 0
-    total_reward = base_reward + lives_reward + score_reward + status_reward + x_pos_reward
-    return total_reward
+    prev_lives_left = prev_info["life"]
+    curr_lives_left = info["life"]
+    if curr_lives_left < prev_lives_left:
+        return -15
+    return base_reward
 
 
 class ReplayBuffer:
@@ -62,12 +60,12 @@ class ReplayBuffer:
         sample_size = min(n, len(self), self.batch_size)
 
         if self.weighted:
-            td_errors = np.sqrt(self.losses)
+            normalized_td_errors = np.sqrt(self.losses) / np.max(self.losses)
             return DataLoader(
                 dataset,
                 batch_size=self.batch_size,
                 sampler=WeightedRandomSampler(
-                    weights=td_errors, replacement=False, num_samples=sample_size
+                    weights=normalized_td_errors, replacement=False, num_samples=sample_size
                 ),
             )
         # use uniform sampling

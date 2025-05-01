@@ -145,7 +145,8 @@ class BasicQAgent(BaseAgent):
 
         batch_size = s.shape[0]
 
-        ep = ep if ep is not None else self.ep_sched.get_epsilon(step)
+        if ep is None:
+            ep = self.ep_sched.get_epsilon(step)
         if random.random() < 1 - ep:
             # compute the Q values for each action from the input state
             action_rewards = [

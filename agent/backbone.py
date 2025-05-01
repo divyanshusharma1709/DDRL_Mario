@@ -42,9 +42,8 @@ class ConvNetBackbone(nn.Module):
             # new_dim = old_dim - kernel_size + 1
             height = height - conv_kernel_size + 1
             width = width - conv_kernel_size + 1
-            if i % 2 == 0:
-                height //= pooling_kernel_size
-                width //= pooling_kernel_size
+            height //= pooling_kernel_size
+            width //= pooling_kernel_size
 
         self.batch_norms = nn.ModuleList(batch_norms)
         self.conv_layers = nn.ModuleList(conv_layers)
@@ -60,12 +59,11 @@ class ConvNetBackbone(nn.Module):
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
         x = state  # (batch_size, channels, width, height)
-        for i, (conv_layer, batch_norm) in enumerate(zip(self.conv_layers, self.batch_norms)):
+        for conv_layer, batch_norm in zip(self.conv_layers, self.batch_norms):
             x = conv_layer(x)
             x = batch_norm(x)
             x = F.relu(x)
-            if i % 2 == 0:
-                x = F.max_pool2d(x, kernel_size=self.pooling_kernel_size)
+            x = F.max_pool2d(x, kernel_size=self.pooling_kernel_size)
         batch_size = x.shape[0]
         x = x.reshape(batch_size, -1)
         return self.fc(x)

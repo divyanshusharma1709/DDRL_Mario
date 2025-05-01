@@ -69,7 +69,7 @@ class ResizeObservation(gym.ObservationWrapper):
 def create_env(stack_size: int, video_dir: T.Optional[str] = None, env_version: str = "v0"):
     env = gym_super_mario_bros.make(f"SuperMarioBros-{env_version}")
     env = JoypadSpace(env, SIMPLE_MOVEMENT)
-    # env = SkipFrame(env, skip=4)
+    env = SkipFrame(env, skip=4)
     env = GrayScaleObservation(env)
     env = ResizeObservation(env, shape=84)
     env = FrameStack(env, num_stack=stack_size)

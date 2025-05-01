@@ -31,13 +31,17 @@ def parse_args():
         "--alpha_mem", type=float, default=0.05, help="Memory alpha parameter for EMDQN"
     )
     parser.add_argument(
-        "--ep_init", type=float, default=0.1, help="Exploration probability (initial)"
+        "--ep_values",
+        type=float,
+        nargs="+",
+        default=[1.0, 0.3, 0.1, 0.05],
     )
     parser.add_argument(
-        "--ep_final", type=float, default=0.01, help="Exploration probability (final)"
+        "--ep_decay_step_counts",
+        type=int,
+        nargs="+",
+        default=[5000, 20000, 30000, 40000],
     )
-    parser.add_argument("--num_steps_before_decay", type=int, default=20000)
-    parser.add_argument("--num_decay_steps", type=int, default=70000)
     parser.add_argument("--gamma", type=float, default=0.99, help="Discount factor")
     parser.add_argument(
         "--memory_update_freq", type=int, default=1_000, help="Memory update frequency for EMDQN"
@@ -67,7 +71,7 @@ def parse_args():
         "--backbone_conv_channels",
         type=int,
         nargs="+",
-        default=[32, 64, 128, 256, 512],
+        default=[32, 64, 128, 256],
         help="Conv channels for backbone",
     )
     parser.add_argument(
@@ -78,7 +82,7 @@ def parse_args():
         "--reward_predictor_dims",
         type=int,
         nargs="+",
-        default=[512, 256],
+        default=[256],
         help="Reward predictor hidden layers",
     )
     parser.add_argument("--replay_buffer_batch_size", type=int, default=1024)
@@ -86,6 +90,7 @@ def parse_args():
     parser.add_argument("--replay_buffer_sample_size", type=int, default=50000)
     parser.add_argument("--replay_buffer_max_size", type=int, default=100000)
     parser.add_argument("--use_prioritized_replay", action="store_true")
+    parser.add_argument("--env_version", type=str, default="v0")
     return parser.parse_args()
 
 
@@ -110,13 +115,15 @@ def save_args_to_json(args: argparse.Namespace, directory: str) -> None:
 if __name__ == "__main__":
     args = parse_args()
 
+    checkpoint_dir = args.checkpoint_dir + "_" + args.env_version
+
     # Create the checkpoint directory if it doesn't exist
-    os.makedirs(args.checkpoint_dir, exist_ok=True)
+    os.makedirs(checkpoint_dir, exist_ok=True)
 
     # Save arguments to JSON file in the checkpoint directory
-    save_args_to_json(args, args.checkpoint_dir)
+    save_args_to_json(args, checkpoint_dir)
 
-    env = create_env(args.frame_stack_size, env_version="v0")
+    env = create_env(args.frame_stack_size, env_version=args.env_version)
 
     num_actions = env.action_space.n
 
@@ -146,13 +153,12 @@ if __name__ == "__main__":
         "replay_buffer_max_size": args.replay_buffer_max_size,
         "use_prioritized_replay": args.use_prioritized_replay,
         "agent_update_frequency": args.agent_update_frequency,
+        "env_version": args.env_version,
     }
 
     ep_sched_params = {
-        "ep_init": args.ep_init,
-        "ep_final": args.ep_final,
-        "num_steps_before_decay": args.num_steps_before_decay,
-        "num_decay_steps": args.num_decay_steps,
+        "ep_values": args.ep_values,
+        "ep_decay_step_counts": args.ep_decay_step_counts,
     }
 
     if args.agent_type in ["emdqn", "both"]:
@@ -167,12 +173,7 @@ if __name__ == "__main__":
             stack_size=args.frame_stack_size,
             num_steps_between_target_updates=args.num_steps_between_target_updates,
         )
-        train_dqn_agent(
-            emdqn_agent,
-            env,
-            args.checkpoint_dir,
-            train_params,
-        )
+        train_dqn_agent(emdqn_agent, env, checkpoint_dir, train_params)
 
     if args.agent_type in ["dqn", "both"]:
         dqn_agent = BasicQAgent(
@@ -183,9 +184,4 @@ if __name__ == "__main__":
             gamma=args.gamma,
             num_steps_between_target_updates=args.num_steps_between_target_updates,
         )
-        train_dqn_agent(
-            dqn_agent,
-            env,
-            args.checkpoint_dir,
-            train_params,
-        )
+        train_dqn_agent(dqn_agent, env, checkpoint_dir, train_params)

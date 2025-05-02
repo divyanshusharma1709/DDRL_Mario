@@ -12,9 +12,9 @@ class Qv2(nn.Module):
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1),
-            nn.ReLU(),
             nn.Conv2d(64, 128, kernel_size=3, stride=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 256, kernel_size=3, stride=1),
             nn.ReLU(),
         )
 
@@ -25,7 +25,9 @@ class Qv2(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(fc_input_size, 512),
             nn.ReLU(),
-            nn.Linear(512, num_actions)
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, num_actions)
         )
 
     def forward(self, state):

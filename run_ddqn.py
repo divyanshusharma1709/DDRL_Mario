@@ -11,7 +11,7 @@ import argparse
 import warnings
 from env_utils import create_env
 
-num_frames = 4
+num_frames = 8
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -37,31 +37,32 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train DDQN agents on Super Mario Bros")
     parser.add_argument("--use_custom_reward", action="store_true")
     parser.add_argument(
-        "--num_train_steps", type=int, default=15_00_000, help="Number of training steps"
+        "--num_train_steps", type=int, default=250_000, help="Number of training steps"
     )
-    parser.add_argument("--max_train_episode_steps", type=int, default=50000)
-    parser.add_argument("--save_every", type=int, default=10_000, help="Save checkpoint frequency")
+    parser.add_argument("--max_train_episode_steps", type=int, default=10_000)
+
+    parser.add_argument("--save_every", type=int, default=10000, help="Save checkpoint frequency")
     parser.add_argument("--eval_every", type=int, default=10_000, help="Evaluation frequency")
     parser.add_argument(
         "--num_eval_episodes", type=int, default=1, help="Number of evaluation episodes"
-    )
+    ) 
     parser.add_argument(
-        "--max_eval_steps", type=int, default=100000, help="Maximum evaluation steps per episode"
+        "--max_eval_steps", type=int, default=10000, help="Maximum evaluation steps per episode"
     )
     parser.add_argument("--render", action="store_true", help="Render environment")
-    parser.add_argument("--frame_stack_size", type=int, default=4, help="Number of frames to stack")
-    parser.add_argument("--lr", type=float, default=0.0001, help="Learning rate")
+    parser.add_argument("--frame_stack_size", type=int, default=8, help="Number of frames to stack")
+    parser.add_argument("--lr", type=float, default=5e-5, help="Learning rate")
     parser.add_argument(
         "--alpha_mem", type=float, default=0.01, help="Memory alpha parameter for EMDQN"
     )
     parser.add_argument(
-        "--ep_init", type=float, default=0.5, help="Exploration probability (initial)"
+        "--ep_init", type=float, default=0.78, help="Exploration probability (initial)"
     )
     parser.add_argument(
         "--ep_final", type=float, default=0.1, help="Exploration probability (final)"
     )
-    parser.add_argument("--num_steps_before_decay", type=int, default=100000)
-    parser.add_argument("--num_decay_steps", type=int, default=1400000)
+    parser.add_argument("--num_steps_before_decay", type=int, default=0)
+    parser.add_argument("--num_decay_steps", type=int, default=250000)
 
     parser.add_argument("--gamma", type=float, default=0.99, help="Discount factor")
     parser.add_argument(
@@ -71,7 +72,7 @@ def parse_args():
         "--checkpoint_dir", type=str, default="ddqn_check", help="Directory to save checkpoints"
     )
 
-    parser.add_argument("--num_steps_between_target_updates", type=int, default=10000)
+    parser.add_argument("--num_steps_between_target_updates", type=int, default=500)
 
     parser.add_argument(
         "--agent_type",
@@ -112,10 +113,10 @@ def parse_args():
     parser.add_argument(
         "--target_update_freq", type=int, default=100, help="Target network update frequency for DDQN"
     )
-    parser.add_argument("--replay_buffer_batch_size", type=int, default=128)
-    parser.add_argument("--agent_update_frequency", type=int, default=25000)
-    parser.add_argument("--replay_buffer_sample_size", type=int, default=25000)
-    parser.add_argument("--replay_buffer_max_size", type=int, default=30000)
+    parser.add_argument("--replay_buffer_batch_size", type=int, default=512)
+    parser.add_argument("--agent_update_frequency", type=int, default=4)
+    parser.add_argument("--replay_buffer_sample_size", type=int, default=2048)
+    parser.add_argument("--replay_buffer_max_size", type=int, default=50_000)
     return parser.parse_args()
 
 
@@ -134,7 +135,7 @@ if __name__ == "__main__":
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     save_args_to_json(args, args.checkpoint_dir)
 
-    env = create_env(stack_size=4)
+    env = create_env(stack_size=num_frames)
     num_actions = env.action_space.n
 
     # obs = env.reset()
@@ -168,6 +169,8 @@ if __name__ == "__main__":
         "ep_final": args.ep_final,
         "num_steps_before_decay": args.num_steps_before_decay,
         "num_decay_steps": args.num_decay_steps,
+        "warmup_ep": 0.9,
+        "warmup_steps": 111000
     }
 
     if args.agent_type in ["emdqn", "both"]:
@@ -215,8 +218,8 @@ if __name__ == "__main__":
             target_update_freq=args.target_update_freq,
             num_steps_between_target_updates=args.num_steps_between_target_updates
         )
-        # ddqn_agent.load("checkpoints", step = 130000)
-        # print("Model restored. Runnin start eval")
+        ddqn_agent.load("ddqn_check/", step = 110000)
+        print("Model restored. Runnin start eval")
         train_dqn_agent(
             ddqn_agent,
             env,

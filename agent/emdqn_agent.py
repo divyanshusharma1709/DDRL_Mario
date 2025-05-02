@@ -142,7 +142,6 @@ class EMDQNAgent(BasicQAgent):
             action = int(action_tensor[i].item())
             best_remembered_reward = self.bank.state_value_lookup(state, action)
             if best_remembered_reward is not None:
-                self.memory_hits += 1
                 mem_loss += (best_remembered_reward - predicted_reward[i, 0]) ** 2 / batch_size
 
         return q_loss + self.alpha * mem_loss

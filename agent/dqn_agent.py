@@ -172,7 +172,7 @@ class BasicQAgent(BaseAgent):
 
     def load(self, checkpoint_dir: str, step: int) -> T.Dict[str, T.Any]:
         path = self._get_model_path(checkpoint_dir, step)
-        state = torch.load(path, weights_only=True)
+        state = torch.load(path + "/model.pt", weights_only=True, map_location=torch.device("mps"))
         self.q.load_state_dict(state)
         with open(os.path.join(path, "metrics.json"), "r", encoding="utf-8") as metrics_file:
             return json.load(metrics_file)
